@@ -1,0 +1,7 @@
+/target
+
+# For js / ts / tsx / jsx test files
+**/*.js
+**/*.jsx
+**/*.ts
+**/*.tsx
