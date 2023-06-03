@@ -8,8 +8,8 @@ fn main() {
     println!("Path: {file_path}");
 
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");
-    let lexer = JsLexer::new(&file_string);
-    match lexer.scan() {
+    let lexer = JsLexer::new();
+    match lexer.scan(&file_string) {
         Ok(result) => println!("{:#?}", result),
         Err(error) => {
             println!("Error while scanning: {:#?}", error)

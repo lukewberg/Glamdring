@@ -1,16 +1,20 @@
-use std::{collections::HashMap, ops::Range};
+use core::time;
+use std::{
+    collections::HashMap,
+    ops::Range,
+    thread::{self},
+};
 
-use crate::types::{ScanError, ScannerState, Token, Tokens};
+use crate::types::{ScanError, ScannerResult, ScannerState, Token, Tokens};
 
-pub struct JsLexer<'a> {
-    pub source: &'a str,
+pub struct JsLexer {
     token_map: HashMap<&'static str, Tokens>,
     char_token_map: HashMap<char, Tokens>,
 }
 
-impl<'a> JsLexer<'a> {
+impl<'a> JsLexer {
     fn build_token_map() -> HashMap<&'static str, Tokens> {
-        let mut token_map = HashMap::from([
+        let token_map = HashMap::from([
             ("function", Tokens::Function),
             ("await", Tokens::Await),
             ("break", Tokens::Break),
@@ -119,9 +123,8 @@ impl<'a> JsLexer<'a> {
         char_token_map
     }
 
-    pub fn scan(&self) -> Result<Vec<Token>, ScanError> {
+    pub fn scan(&self, source: &str) -> Result<ScannerResult, ScanError> {
         let mut start = 0;
-        let mut current = 0;
 
         /* When we encounter a single-char lexeme like =, we keep proceeding
         until we encounter a char that is not a single-char lexeme */
@@ -130,17 +133,18 @@ impl<'a> JsLexer<'a> {
         let mut scanner_state = ScannerState::Idle;
 
         // Convert source string into a char vec so we can index into it
-        let source_chars: Vec<char> = self.source.chars().collect();
+        let source_chars: Vec<char> = source.chars().collect();
 
         let mut token_vec: Vec<Token> = Vec::new();
 
         for (i, char) in source_chars.iter().enumerate() {
+            // thread::sleep(time::Duration::from_millis(1200));
             match char {
                 ' ' => {
                     // Whitespace can  terminate a lexeme, be contiguous, or also be part of a string or comment.
                     // When first encountering white-space we will check for a lexeme between the start and current range
-                    // `in_whitespace` will then be set to true
-                    // If `in_whitespace` is already true, we will only increment start until non-white space is encountered
+                    // `scanner_state` will then be set to `ScannerState::InWhitespace`
+                    // If `scanner_state` is already `ScannerState::InWhitespace`, we will only increment start until non-white space is encountered
 
                     // We could be traversing white space in a comment or string literal
                     // Increment current and continue if so
@@ -148,7 +152,6 @@ impl<'a> JsLexer<'a> {
                         || scanner_state == ScannerState::InBlockComment
                         || scanner_state == ScannerState::InString
                     {
-                        current = i;
                         continue;
                     } else if scanner_state == ScannerState::InWhitespace {
                         start = i;
@@ -156,10 +159,15 @@ impl<'a> JsLexer<'a> {
                     } else {
                         // We have encountered white space
                         // Check to see if lexeme between `start` and `i`
-                        self.get_token(start..i, |token| {
-                            // If a token is found, add it to the `token_vec`
-                            token_vec.push(token);
-                        });
+                        token_vec.push(self.get_token(&source_chars, start..i).unwrap_or_else(
+                            || {
+                                Token::new(
+                                    start..i,
+                                    Tokens::Identifier,
+                                    source_chars[start..i].iter().collect(),
+                                )
+                            },
+                        ));
                         // Since we are in white space, set this to true in case of contiguous
                         scanner_state = ScannerState::InWhitespace;
 
@@ -167,63 +175,143 @@ impl<'a> JsLexer<'a> {
                     }
                 }
                 '/' => {
-                    // Could be a division token or the start of a comment/block comment
+                    // Could be a division token or the start/end of a comment/block comment
                     // Check if last char was another `/`
-
                     if source_chars[i - 1] == '/' {
                         // We are in a comment, change machine state
                         scanner_state = ScannerState::InComment;
+                    } else if source_chars[i - 1] == '*' {
+                        // We have exited a block comment
+                        scanner_state = ScannerState::Idle;
+                    } else {
+                        // If we aren't in a comment, proceed as normal operator and catch in another match arm
+                        scanner_state = ScannerState::InOperator;
                     }
                 }
                 '\n' => {
                     // Although it's uncommon, statements can be multiline
+                    // Newlines do delimit tokens
                     // Newlines terminate single-line comments
                     if scanner_state == ScannerState::InComment {
                         // We were in a comment but have reached it's end, change to `Idle` state
                         scanner_state = ScannerState::Idle;
                     }
+
+                    match scanner_state {
+                        ScannerState::Idle => todo!(),
+                        ScannerState::InIdentifier => todo!(),
+                        ScannerState::InOperator => todo!(),
+                        ScannerState::InNumber => todo!(),
+                        ScannerState::InString => todo!(),
+                        ScannerState::InComment => todo!(),
+                        ScannerState::InBlockComment => todo!(),
+                        ScannerState::InWhitespace => todo!(),
+                    }
+
+                    start = i;
+                    continue;
                 }
                 '*' => {
-                    // Asterisk can be an operator or signify the end of a block comment
-                    if source_chars[i+1] == '/' {
-                        scanner_state = ScannerState::Idle;
+                    // Asterisk can be an operator or signify the start of a block comment (if preceded by a `/`)
+                    if scanner_state == ScannerState::InOperator {
+                        // If we find a preceding '/' char, we're in a block comment
+                        if *&source_chars[i - 1] == '/' {
+                            scanner_state = ScannerState::InBlockComment;
+                            continue;
+                        }
                     }
+                    if source_chars[i - 1] == '/' {
+                        scanner_state = ScannerState::InBlockComment;
+                    } else {
+                        // If no '/' char is behind us, we must be part of a normal operator. Will catch in another match arm
+                        scanner_state = ScannerState::InOperator;
+                    }
+                }
+                '`' => {
+                    // TODO: Call `scan_template_string` here
                 }
                 _ => {
                     // Catch-all for the rest of the lexemes
+                    match scanner_state {
+                        ScannerState::InComment | ScannerState::InBlockComment => {
+                            continue;
+                        }
+                        _ => {
+                            if *char == '"' && scanner_state != ScannerState::InString {
+                                scanner_state = ScannerState::InString;
+                                start = i;
+                            } else if *char == '"' {
+                                token_vec.push(Token::new(
+                                    start..i,
+                                    Tokens::String,
+                                    source_chars[start..i].iter().collect(),
+                                ));
+                                scanner_state = ScannerState::Idle;
+                            }
+
+                            // Is current char a lexeme?
+                            if let Some(result_char) = self.char_token_map.get(char) {
+                                if scanner_state != ScannerState::InOperator {
+                                    start = i;
+                                } else if scanner_state == ScannerState::InIdentifier {
+                                    // If we were in an identifier, we need to close that out
+                                    token_vec
+                                        .push(self.get_token(&source_chars, start..i).unwrap());
+                                }
+                                scanner_state = ScannerState::InOperator;
+                                continue;
+                            } else {
+                                // White space is caught above. The char is not a lexeme itself (not an operator)
+                                // At this point, we can't know if we're in a keyword or an identifier, identifier state will cover both
+                                if scanner_state != ScannerState::InIdentifier {
+                                    // Just exited an operator, check for token between range
+                                    if let Some(token) = self.get_token(&source_chars, start..i) {
+                                        // There's a token, add to vec
+                                        token_vec.push(token);
+                                    }
+                                    scanner_state = ScannerState::InIdentifier;
+                                    start = i;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                 }
             }
+            // println!("Scanner state is: {:#?}\n on char: {}", scanner_state, char);
         }
-        Ok(token_vec)
+        Ok(ScannerResult {
+            file_name: String::from("Hello World!"),
+            token_vec,
+        })
     }
 
-    fn peek(&self, target: char, index: usize) -> bool {
-        if index < self.source.len() {
-            self.source.chars().nth(index).unwrap() == target
-        } else {
-            false
-        }
+    // fn peek(&self, target: char, index: usize) -> bool {
+    //     if index < self.source.len() {
+    //         self.source.chars().nth(index).unwrap() == target
+    //     } else {
+    //         false
+    //     }
+    // }
+
+    fn scan_template_string(source: &Vec<char>) -> () {
+        // TODO: Implement
+        ()
     }
 
-    fn get_token<F: FnMut(Token)>(&self, range: Range<usize>, mut f: F) -> () {
+    fn get_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
         // Check `token_map` to see if string is a keyword or operator
-        let lexeme = &self.source[range.to_owned()];
+        let lexeme: String = source[range.to_owned()].iter().collect();
         if let Some(token) = self.token_map.get(&lexeme[..]) {
             // We have found a keyword/operator, now add it to the result vector
-            f(Token::new(range, token.clone(), lexeme.to_string()));
+            Some(Token::new(range, token.clone(), lexeme))
         } else {
-            // If it's neither, must be an identifier.
-            f(Token::new(range, Tokens::Identifier, lexeme.to_string()));
+            None
         }
     }
 
-    fn check_token(&self, range: Range<usize>) -> bool {
-        self.token_map.contains_key(&self.source[range])
-    }
-
-    pub fn new(source: &str) -> JsLexer {
+    pub fn new() -> JsLexer {
         JsLexer {
-            source,
             token_map: Self::build_token_map(),
             char_token_map: Self::build_char_token_map(),
         }

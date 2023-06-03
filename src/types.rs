@@ -50,6 +50,8 @@ pub enum Tokens {
     Ellipsis,
     Semicolon,
     Comma,
+    String,
+    TemplateString,
     LessThan,
     GreaterThan,
     LessThanEqual,
@@ -109,7 +111,7 @@ pub enum ScanError {
     UnexpectedIdentifier { token: String, location: usize },
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum ScannerState {
     Idle,
     InIdentifier,
@@ -121,6 +123,12 @@ pub enum ScannerState {
     InWhitespace,
 }
 
+#[derive(Debug)]
+pub struct ScannerResult {
+    pub file_name: String,
+    pub token_vec: Vec<Token>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Token {
     // pub start: u32,
@@ -128,6 +136,7 @@ pub struct Token {
     pub range: Range<usize>,
     pub token_type: Tokens,
     pub lexeme: String,
+    pub children: Option<Vec<Box<Token>>>,
 }
 
 impl Token {
@@ -136,6 +145,15 @@ impl Token {
             range,
             token_type,
             lexeme,
+            children: None,
+        }
+    }
+
+    pub fn add_child(mut self, token: Token) -> () {
+        if let Some(mut children) = self.children {
+            children.push(Box::new(token));
+        } else {
+            self.children = Some(vec![Box::new(token)]);
         }
     }
 }
