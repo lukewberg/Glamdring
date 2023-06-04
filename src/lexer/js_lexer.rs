@@ -177,6 +177,9 @@ impl<'a> JsLexer {
                 '/' => {
                     // Could be a division token or the start/end of a comment/block comment
                     // Check if last char was another `/`
+                    if i == 0 {
+                        continue;
+                    }
                     if source_chars[i - 1] == '/' {
                         // We are in a comment, change machine state
                         scanner_state = ScannerState::InComment;
@@ -192,20 +195,29 @@ impl<'a> JsLexer {
                     // Although it's uncommon, statements can be multiline
                     // Newlines do delimit tokens
                     // Newlines terminate single-line comments
-                    if scanner_state == ScannerState::InComment {
-                        // We were in a comment but have reached it's end, change to `Idle` state
-                        scanner_state = ScannerState::Idle;
-                    }
 
                     match scanner_state {
-                        ScannerState::Idle => todo!(),
-                        ScannerState::InIdentifier => todo!(),
-                        ScannerState::InOperator => todo!(),
-                        ScannerState::InNumber => todo!(),
-                        ScannerState::InString => todo!(),
-                        ScannerState::InComment => todo!(),
-                        ScannerState::InBlockComment => todo!(),
-                        ScannerState::InWhitespace => todo!(),
+                        ScannerState::InString => {
+                            // Strings are't multiline outside of template strings
+                            // Throw error here
+                            start = i;
+                            return Err(ScanError::InvalidSyntax {
+                                token: String::from("/\n"),
+                                location: i,
+                            });
+                        }
+                        ScannerState::InComment => {
+                            // We were in a comment but have reached it's end, change to `Idle` state
+                            scanner_state = ScannerState::Idle;
+                        }
+                        ScannerState::InBlockComment | ScannerState::Idle => continue,
+                        _ => {
+                            // Because newline delimits tokens, capture and add token to result vec
+                            if let Some(token) = self.get_token(&source_chars, start..(i - 1)) {
+                                token_vec.push(token);
+                                scanner_state = ScannerState::Idle;
+                            }
+                        }
                     }
 
                     start = i;
@@ -296,17 +308,27 @@ impl<'a> JsLexer {
 
     fn scan_template_string(source: &Vec<char>) -> () {
         // TODO: Implement
-        ()
+        unimplemented!();
     }
 
     fn get_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
         // Check `token_map` to see if string is a keyword or operator
         let lexeme: String = source[range.to_owned()].iter().collect();
-        if let Some(token) = self.token_map.get(&lexeme[..]) {
-            // We have found a keyword/operator, now add it to the result vector
-            Some(Token::new(range, token.clone(), lexeme))
+        if lexeme.len() > 1 {
+            if let Some(token) = self.token_map.get(&lexeme[..]) {
+                // We have found a keyword/operator, now add it to the result vector
+                Some(Token::new(range, token.clone(), lexeme))
+            } else {
+                None
+            }
         } else {
-            None
+            // Check for single-char lexeme
+            let char = lexeme.chars().next().unwrap_or_default();
+            if let Some(token) = self.char_token_map.get(&char) {
+                Some(Token::new(range, token.clone(), lexeme))
+            } else {
+                None
+            }
         }
     }
 

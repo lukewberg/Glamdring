@@ -109,6 +109,7 @@ pub enum ScanError {
     UnexpectedToken { token: String, location: usize },
     UnexpectedOperator { token: String, location: usize },
     UnexpectedIdentifier { token: String, location: usize },
+    InvalidSyntax { token: String, location: usize }
 }
 
 #[derive(PartialEq, Eq, Debug)]

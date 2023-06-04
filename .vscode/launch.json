@@ -29,7 +29,9 @@
           "kind": "bin"
         }
       },
-      "args": [],
+      "args": [
+        "./test/test.js"
+      ],
       "cwd": "${workspaceFolder}"
     },
     {
