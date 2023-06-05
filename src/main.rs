@@ -1,5 +1,5 @@
 use std::{env, fs};
-use weblex::lexer::js_lexer::JsLexer;
+use weblex::lexer::lexer::JsLexer;
 
 fn main() {
     // Collect command-line arguments

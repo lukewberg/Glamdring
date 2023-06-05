@@ -5,7 +5,7 @@ use std::{
     thread::{self},
 };
 
-use crate::types::{ScanError, ScannerResult, ScannerState, Token, Tokens};
+use crate::types::{NumberType, ScanError, ScannerResult, ScannerState, Token, Tokens};
 
 pub struct JsLexer {
     token_map: HashMap<&'static str, Tokens>,
@@ -38,6 +38,7 @@ impl<'a> JsLexer {
             ("if", Tokens::If),
             ("import", Tokens::Import),
             ("in", Tokens::In),
+            ("Infinity", Tokens::Infinity),
             ("instanceof", Tokens::Instanceof),
             ("new", Tokens::New),
             ("null", Tokens::Null),
@@ -150,7 +151,9 @@ impl<'a> JsLexer {
                     // Increment current and continue if so
                     if scanner_state == ScannerState::InComment
                         || scanner_state == ScannerState::InBlockComment
-                        || scanner_state == ScannerState::InString
+                        || scanner_state == ScannerState::InStringDouble
+                        || scanner_state == ScannerState::InStringSingle
+                        || scanner_state == ScannerState::InStringTemplate
                     {
                         continue;
                     } else if scanner_state == ScannerState::InWhitespace {
@@ -197,7 +200,7 @@ impl<'a> JsLexer {
                     // Newlines terminate single-line comments
 
                     match scanner_state {
-                        ScannerState::InString => {
+                        ScannerState::InStringDouble | ScannerState::InStringSingle => {
                             // Strings are't multiline outside of template strings
                             // Throw error here
                             start = i;
@@ -248,21 +251,51 @@ impl<'a> JsLexer {
                         ScannerState::InComment | ScannerState::InBlockComment => {
                             continue;
                         }
-                        _ => {
-                            if *char == '"' && scanner_state != ScannerState::InString {
-                                scanner_state = ScannerState::InString;
-                                start = i;
-                            } else if *char == '"' {
+                        ScannerState::InStringSingle | ScannerState::InStringDouble => {
+                            // Check to see if we're at the end of the string
+                            // String ends with same char as it began, either ' or "
+                            // Also check for escape backslash
+                            if (*char == '"' || *char == '\'')
+                                && (scanner_state == ScannerState::InStringDouble
+                                    || scanner_state == ScannerState::InStringSingle)
+                            {
+                                // Check for escape at previous index
+                                // Only check if the escaped char is the same as what started the string
+                                if (*char == '"' && scanner_state == ScannerState::InStringDouble
+                                    || *char == '\''
+                                        && scanner_state == ScannerState::InStringSingle)
+                                    && source_chars[i - 1] == '\\'
+                                {
+                                    // We are still in the string, continue
+                                    continue;
+                                }
                                 token_vec.push(Token::new(
                                     start..i,
                                     Tokens::String,
-                                    source_chars[start..i].iter().collect(),
+                                    source_chars[start..i + 1].iter().collect(),
                                 ));
                                 scanner_state = ScannerState::Idle;
+                                start = i;
+                                continue;
+                            }
+                        }
+                        ScannerState::InNumber => {
+                            
+                        }
+                        _ => {
+                            if *char == '"' && scanner_state != ScannerState::InStringDouble {
+                                scanner_state = ScannerState::InStringDouble;
+                                start = i;
+                                continue;
+                            } else if *char == '\'' && scanner_state != ScannerState::InStringSingle
+                            {
+                                scanner_state = ScannerState::InStringSingle;
+                                start = i;
+                                continue;
                             }
 
                             // Is current char a lexeme?
-                            if let Some(result_char) = self.char_token_map.get(char) {
+                            if let Some(_) = self.char_token_map.get(char) {
                                 if scanner_state != ScannerState::InOperator {
                                     start = i;
                                 } else if scanner_state == ScannerState::InIdentifier {
@@ -274,7 +307,7 @@ impl<'a> JsLexer {
                                 continue;
                             } else {
                                 // White space is caught above. The char is not a lexeme itself (not an operator)
-                                // At this point, we can't know if we're in a keyword or an identifier, identifier state will cover both
+                                // At this point, we can't know if we're in a keyword, identifier or a number
                                 if scanner_state != ScannerState::InIdentifier {
                                     // Just exited an operator, check for token between range
                                     if let Some(token) = self.get_token(&source_chars, start..i) {
@@ -282,6 +315,15 @@ impl<'a> JsLexer {
                                         token_vec.push(token);
                                     }
                                     scanner_state = ScannerState::InIdentifier;
+                                    start = i;
+                                    continue;
+                                }
+                            }
+                            // Check for number
+                            if let Ok(number) = char.to_string().parse::<i32>() {
+                                // all number types in JS at least start with a number
+                                if scanner_state != ScannerState::InNumber {
+                                    scanner_state = ScannerState::InNumber;
                                     start = i;
                                     continue;
                                 }
@@ -329,6 +371,16 @@ impl<'a> JsLexer {
             } else {
                 None
             }
+        }
+    }
+
+    fn get_number_type(&self, source: &Vec<char>, index: usize) -> Option<NumberType> {
+        // Get string of the first couple chars
+        let number_str: String = source[index..index + 1].iter().collect();
+        match &(*number_str) {
+            "0x" | "0X" => Some(NumberType::Hex),
+            "0b" | "0B" => Some(NumberType::Binary),
+            _ => None
         }
     }
 

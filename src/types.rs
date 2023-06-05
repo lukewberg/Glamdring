@@ -101,6 +101,12 @@ pub enum Tokens {
     StringLiteral,
     NumericLiteral,
     Identifier,
+    Float,
+    Int,
+    Hex,
+    Binary,
+    Exponential,
+    Infinity,
 }
 
 #[derive(Debug)]
@@ -109,7 +115,7 @@ pub enum ScanError {
     UnexpectedToken { token: String, location: usize },
     UnexpectedOperator { token: String, location: usize },
     UnexpectedIdentifier { token: String, location: usize },
-    InvalidSyntax { token: String, location: usize }
+    InvalidSyntax { token: String, location: usize },
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -118,7 +124,9 @@ pub enum ScannerState {
     InIdentifier,
     InOperator,
     InNumber,
-    InString,
+    InStringDouble,
+    InStringSingle,
+    InStringTemplate,
     InComment,
     InBlockComment,
     InWhitespace,
@@ -157,6 +165,14 @@ impl Token {
             self.children = Some(vec![Box::new(token)]);
         }
     }
+}
+
+pub enum NumberType {
+    Float,
+    Int,
+    Hex,
+    Binary,
+    Exponential
 }
 
 pub enum TestEnum {
