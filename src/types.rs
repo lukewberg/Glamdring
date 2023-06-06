@@ -107,6 +107,7 @@ pub enum Tokens {
     Binary,
     Exponential,
     Infinity,
+    BigInt,
 }
 
 #[derive(Debug)]
@@ -172,7 +173,8 @@ pub enum NumberType {
     Int,
     Hex,
     Binary,
-    Exponential
+    Exponential,
+    BigInt,
 }
 
 pub enum TestEnum {

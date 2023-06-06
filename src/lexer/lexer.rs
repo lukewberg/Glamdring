@@ -7,12 +7,12 @@ use std::{
 
 use crate::types::{NumberType, ScanError, ScannerResult, ScannerState, Token, Tokens};
 
-pub struct JsLexer {
+pub struct Lexer {
     token_map: HashMap<&'static str, Tokens>,
     char_token_map: HashMap<char, Tokens>,
 }
 
-impl<'a> JsLexer {
+impl<'a> Lexer {
     fn build_token_map() -> HashMap<&'static str, Tokens> {
         let token_map = HashMap::from([
             ("function", Tokens::Function),
@@ -162,6 +162,11 @@ impl<'a> JsLexer {
                     } else {
                         // We have encountered white space
                         // Check to see if lexeme between `start` and `i`
+                        if source_chars[start] == '\n' {
+                            start = i;
+                            scanner_state = ScannerState::Idle;
+                            continue;
+                        }
                         token_vec.push(self.get_token(&source_chars, start..i).unwrap_or_else(
                             || {
                                 Token::new(
@@ -173,9 +178,9 @@ impl<'a> JsLexer {
                         ));
                         // Since we are in white space, set this to true in case of contiguous
                         scanner_state = ScannerState::InWhitespace;
-
-                        start = i;
                     }
+                    start = i;
+                    continue;
                 }
                 '/' => {
                     // Could be a division token or the start/end of a comment/block comment
@@ -194,7 +199,7 @@ impl<'a> JsLexer {
                         scanner_state = ScannerState::InOperator;
                     }
                 }
-                '\n' => {
+                '\n' | '\r' => {
                     // Although it's uncommon, statements can be multiline
                     // Newlines do delimit tokens
                     // Newlines terminate single-line comments
@@ -203,7 +208,6 @@ impl<'a> JsLexer {
                         ScannerState::InStringDouble | ScannerState::InStringSingle => {
                             // Strings are't multiline outside of template strings
                             // Throw error here
-                            start = i;
                             return Err(ScanError::InvalidSyntax {
                                 token: String::from("/\n"),
                                 location: i,
@@ -213,7 +217,10 @@ impl<'a> JsLexer {
                             // We were in a comment but have reached it's end, change to `Idle` state
                             scanner_state = ScannerState::Idle;
                         }
-                        ScannerState::InBlockComment | ScannerState::Idle => continue,
+                        ScannerState::InBlockComment | ScannerState::Idle => {
+                            start = i;
+                            continue;
+                        }
                         _ => {
                             // Because newline delimits tokens, capture and add token to result vec
                             if let Some(token) = self.get_token(&source_chars, start..(i - 1)) {
@@ -227,7 +234,7 @@ impl<'a> JsLexer {
                     continue;
                 }
                 '*' => {
-                    // Asterisk can be an operator or signify the start of a block comment (if preceded by a `/`)
+                    // Asterisk can be an operator, part of an operator or signify the start of a block comment (if preceded by a `/`)
                     if scanner_state == ScannerState::InOperator {
                         // If we find a preceding '/' char, we're in a block comment
                         if *&source_chars[i - 1] == '/' {
@@ -240,6 +247,8 @@ impl<'a> JsLexer {
                     } else {
                         // If no '/' char is behind us, we must be part of a normal operator. Will catch in another match arm
                         scanner_state = ScannerState::InOperator;
+                        start = i;
+                        continue;
                     }
                 }
                 '`' => {
@@ -279,9 +288,7 @@ impl<'a> JsLexer {
                                 continue;
                             }
                         }
-                        ScannerState::InNumber => {
-                            
-                        }
+                        ScannerState::InNumber => {}
                         _ => {
                             if *char == '"' && scanner_state != ScannerState::InStringDouble {
                                 scanner_state = ScannerState::InStringDouble;
@@ -320,7 +327,7 @@ impl<'a> JsLexer {
                                 }
                             }
                             // Check for number
-                            if let Ok(number) = char.to_string().parse::<i32>() {
+                            if let Ok(_) = char.to_string().parse::<i32>() {
                                 // all number types in JS at least start with a number
                                 if scanner_state != ScannerState::InNumber {
                                     scanner_state = ScannerState::InNumber;
@@ -380,12 +387,12 @@ impl<'a> JsLexer {
         match &(*number_str) {
             "0x" | "0X" => Some(NumberType::Hex),
             "0b" | "0B" => Some(NumberType::Binary),
-            _ => None
+            _ => None,
         }
     }
 
-    pub fn new() -> JsLexer {
-        JsLexer {
+    pub fn new() -> Lexer {
+        Lexer {
             token_map: Self::build_token_map(),
             char_token_map: Self::build_char_token_map(),
         }

@@ -1,5 +1,5 @@
 use std::{env, fs};
-use weblex::lexer::lexer::JsLexer;
+use weblex::lexer::lexer::Lexer;
 
 fn main() {
     // Collect command-line arguments
@@ -8,7 +8,7 @@ fn main() {
     println!("Path: {file_path}");
 
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");
-    let lexer = JsLexer::new();
+    let lexer = Lexer::new();
     match lexer.scan(&file_string) {
         Ok(result) => println!("{:#?}", result),
         Err(error) => {
