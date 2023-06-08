@@ -101,13 +101,18 @@ pub enum Tokens {
     StringLiteral,
     NumericLiteral,
     Identifier,
-    Float,
     Int,
+    Float,
     Hex,
+    Octal,
     Binary,
     Exponential,
     Infinity,
     BigInt,
+    BigFloat,
+    BigHex,
+    BigBinary,
+    BigOctal
 }
 
 #[derive(Debug)]
@@ -145,12 +150,12 @@ pub struct Token {
     // pub end: u32,
     pub range: Range<usize>,
     pub token_type: Tokens,
-    pub lexeme: String,
+    pub lexeme: Option<String>,
     pub children: Option<Vec<Box<Token>>>,
 }
 
 impl Token {
-    pub fn new(range: Range<usize>, token_type: Tokens, lexeme: String) -> Token {
+    pub fn new(range: Range<usize>, token_type: Tokens, lexeme: Option<String>) -> Token {
         Token {
             range,
             token_type,
@@ -168,13 +173,18 @@ impl Token {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub enum NumberType {
     Float,
     Int,
     Hex,
+    Octal,
     Binary,
     Exponential,
     BigInt,
+    BigHex,
+    BigBinary,
+    BigOctal,
 }
 
 pub enum TestEnum {

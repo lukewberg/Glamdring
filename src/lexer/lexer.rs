@@ -1,9 +1,4 @@
-use core::time;
-use std::{
-    collections::HashMap,
-    ops::Range,
-    thread::{self},
-};
+use std::{collections::HashMap, ops::Range};
 
 use crate::types::{NumberType, ScanError, ScannerResult, ScannerState, Token, Tokens};
 
@@ -14,7 +9,7 @@ pub struct Lexer {
 
 impl<'a> Lexer {
     fn build_token_map() -> HashMap<&'static str, Tokens> {
-        let token_map = HashMap::from([
+        HashMap::from([
             ("function", Tokens::Function),
             ("await", Tokens::Await),
             ("break", Tokens::Break),
@@ -88,13 +83,11 @@ impl<'a> Lexer {
             ("||=", Tokens::OrAssignment),
             ("??=", Tokens::NullishCoalescingAssignment),
             ("=>", Tokens::ArrowNotation),
-        ]);
-
-        token_map
+        ])
     }
 
     fn build_char_token_map() -> HashMap<char, Tokens> {
-        let char_token_map = HashMap::from([
+        HashMap::from([
             ('{', Tokens::OpenCurlyBrace),
             ('}', Tokens::CloseCurlyBrace),
             ('(', Tokens::OpenParenthesis),
@@ -119,10 +112,23 @@ impl<'a> Lexer {
             ('?', Tokens::Ternary),
             (':', Tokens::Colon),
             ('=', Tokens::Assignment),
-        ]);
-
-        char_token_map
+        ])
     }
+
+    // fn build_number_token_map() -> HashMap<NumberType, Tokens> {
+    //     HashMap::from([
+    //         (NumberType::Int, Tokens::Int),
+    //         (NumberType::Float, Tokens::Float),
+    //         (NumberType::Hex, Tokens::Hex),
+    //         (NumberType::Octal, Tokens::Octal),
+    //         (NumberType::Binary, Tokens::Binary),
+    //         (NumberType::Exponential, Tokens::Exponential),
+    //         (NumberType::BigInt, Tokens::BigInt),
+    //         (NumberType::BigHex, Tokens::BigHex),
+    //         (NumberType::BigBinary, Tokens::BigBinary),
+    //         (NumberType::BigOctal, Tokens::BigOctal),
+    //     ])
+    // }
 
     pub fn scan(&self, source: &str) -> Result<ScannerResult, ScanError> {
         let mut start = 0;
@@ -149,36 +155,43 @@ impl<'a> Lexer {
 
                     // We could be traversing white space in a comment or string literal
                     // Increment current and continue if so
-                    if scanner_state == ScannerState::InComment
-                        || scanner_state == ScannerState::InBlockComment
-                        || scanner_state == ScannerState::InStringDouble
-                        || scanner_state == ScannerState::InStringSingle
-                        || scanner_state == ScannerState::InStringTemplate
-                    {
-                        continue;
-                    } else if scanner_state == ScannerState::InWhitespace {
-                        start = i;
-                        continue;
-                    } else {
-                        // We have encountered white space
-                        // Check to see if lexeme between `start` and `i`
-                        if source_chars[start] == '\n' {
+
+                    match scanner_state {
+                        ScannerState::InComment
+                        | ScannerState::InBlockComment
+                        | ScannerState::InStringDouble
+                        | ScannerState::InStringSingle
+                        | ScannerState::InStringTemplate => continue,
+                        ScannerState::InWhitespace => {
                             start = i;
-                            scanner_state = ScannerState::Idle;
                             continue;
                         }
-                        token_vec.push(self.get_token(&source_chars, start..i).unwrap_or_else(
-                            || {
-                                Token::new(
-                                    start..i,
-                                    Tokens::Identifier,
-                                    source_chars[start..i].iter().collect(),
-                                )
-                            },
-                        ));
-                        // Since we are in white space, set this to true in case of contiguous
-                        scanner_state = ScannerState::InWhitespace;
+                        ScannerState::InNumber => {
+                            // Exiting a number
+                            // Can't validate number or get it's type without reaching a whitespace, newline, or operator
+                        }
+                        _ => {
+                            // We have encountered white space
+                            // Check to see if lexeme between `start` and `i`
+                            if source_chars[start] == '\n' {
+                                start = i;
+                                scanner_state = ScannerState::Idle;
+                                continue;
+                            }
+                            token_vec.push(self.get_token(&source_chars, start..i).unwrap_or_else(
+                                || {
+                                    Token::new(
+                                        start..i,
+                                        Tokens::Identifier,
+                                        Some(source_chars[start..i].iter().collect()),
+                                    )
+                                },
+                            ));
+                            // Since we are in white space, set this to true in case of contiguous
+                            scanner_state = ScannerState::InWhitespace;
+                        }
                     }
+
                     start = i;
                     continue;
                 }
@@ -225,11 +238,12 @@ impl<'a> Lexer {
                             // Because newline delimits tokens, capture and add token to result vec
                             if let Some(token) = self.get_token(&source_chars, start..(i - 1)) {
                                 token_vec.push(token);
-                                scanner_state = ScannerState::Idle;
                             }
                         }
                     }
 
+                    // Scanner state is always idle when moving through newlines
+                    scanner_state = ScannerState::Idle;
                     start = i;
                     continue;
                 }
@@ -281,14 +295,13 @@ impl<'a> Lexer {
                                 token_vec.push(Token::new(
                                     start..i,
                                     Tokens::String,
-                                    source_chars[start..i + 1].iter().collect(),
+                                    Some(source_chars[start..i + 1].iter().collect()),
                                 ));
                                 scanner_state = ScannerState::Idle;
                                 start = i;
                                 continue;
                             }
                         }
-                        ScannerState::InNumber => {}
                         _ => {
                             if *char == '"' && scanner_state != ScannerState::InStringDouble {
                                 scanner_state = ScannerState::InStringDouble;
@@ -314,7 +327,7 @@ impl<'a> Lexer {
                                 continue;
                             } else {
                                 // White space is caught above. The char is not a lexeme itself (not an operator)
-                                // At this point, we can't know if we're in a keyword, identifier or a number
+                                // At this point, we can't know if we're in a keyword, identifier or a number. Must test
                                 if scanner_state != ScannerState::InIdentifier {
                                     // Just exited an operator, check for token between range
                                     if let Some(token) = self.get_token(&source_chars, start..i) {
@@ -360,13 +373,18 @@ impl<'a> Lexer {
         unimplemented!();
     }
 
+    #[inline]
     fn get_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
         // Check `token_map` to see if string is a keyword or operator
-        let lexeme: String = source[range.to_owned()].iter().collect();
+        let mut lexeme = String::with_capacity(source.len());
+        for c in &source[range.start..range.end] {
+            lexeme.push(*c);
+        }
         if lexeme.len() > 1 {
-            if let Some(token) = self.token_map.get(&lexeme[..]) {
+            if let Some(token) = self.token_map.get(lexeme.as_str()) {
                 // We have found a keyword/operator, now add it to the result vector
-                Some(Token::new(range, token.clone(), lexeme))
+                // keywords/operators do not need to have their literal copied into the token
+                Some(Token::new(range, token.clone(), None))
             } else {
                 None
             }
@@ -374,21 +392,111 @@ impl<'a> Lexer {
             // Check for single-char lexeme
             let char = lexeme.chars().next().unwrap_or_default();
             if let Some(token) = self.char_token_map.get(&char) {
-                Some(Token::new(range, token.clone(), lexeme))
+                // keywords/operators do not need to have their literal copied into the token
+                Some(Token::new(range, token.clone(), None))
             } else {
                 None
             }
         }
     }
 
-    fn get_number_type(&self, source: &Vec<char>, index: usize) -> Option<NumberType> {
+    fn get_number_type(&self, source: &Vec<char>, range: &Range<usize>) -> Option<NumberType> {
         // Get string of the first couple chars
-        let number_str: String = source[index..index + 1].iter().collect();
-        match &(*number_str) {
-            "0x" | "0X" => Some(NumberType::Hex),
-            "0b" | "0B" => Some(NumberType::Binary),
-            _ => None,
+        let literal = match source.get(range.start..range.end) {
+            Some(result) => result,
+            None => {
+                return None;
+            }
+        };
+        if let Some(array) = source.get(0..2) {
+            let last_char = *(literal.last().unwrap());
+            match array {
+                ['0', 'x'] | ['0', 'X'] => {
+                    // Hex
+                    if last_char == 'n' {
+                        // BigHex
+                        return Some(NumberType::BigHex);
+                    }
+                    return Some(NumberType::Hex);
+                }
+                ['0', 'b'] | ['0', 'B'] => {
+                    // Binary
+                    if last_char == 'n' {
+                        // BigBinary
+                        return Some(NumberType::BigBinary);
+                    }
+                    return Some(NumberType::Binary);
+                }
+                ['0', 'o'] | ['0', 'O'] => {
+                    // Octal
+                    if last_char == 'n' {
+                        return Some(NumberType::BigOctal);
+                    }
+                    return Some(NumberType::Octal);
+                }
+                _ => {
+                    // Exponential have n digits followed by 'e' followed by an optional +- and then digits
+                    // BigInt only ends with 'n', cannot start with 0
+                    if last_char == 'n' {
+                        return Some(NumberType::BigInt);
+                    }
+                }
+            }
         }
+        None
+    }
+
+    fn get_number_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
+        // Validate number and get it's type
+        // Array is on the stack, BLAZINGLY fast
+        let token_type_array = [
+            Tokens::Float,
+            Tokens::Int,
+            Tokens::Hex,
+            Tokens::Octal,
+            Tokens::Binary,
+            Tokens::Exponential,
+            Tokens::BigInt,
+            Tokens::BigHex,
+            Tokens::BigBinary,
+            Tokens::BigOctal,
+        ];
+
+        if let Some(number_type) = self.get_number_type(&source, &range) {
+            let literal: String = source[range.start..range.end].iter().collect();
+            return Some(Token::new(
+                range,
+                token_type_array[number_type as usize].to_owned(),
+                Some(literal),
+            ));
+        }
+        None
+    }
+
+    fn is_number_exponential(source: &Vec<char>, range: Range<usize>) -> bool {
+        let mut e_found = false;
+        let mut sign_found = false;
+        for &char in source[range].iter() {
+            // If we have already encountered 'e', the rest must be numbers or +/-
+            // If not, continue to parse numbers.
+            if let Ok(_) = char.to_string().parse::<i32>() {
+            } else if char == '+' || char == '-' {
+                if sign_found == true {
+                    // Invalid, return false
+                    return false;
+                }
+                sign_found = true;
+            } else if char == 'e' || char == 'E' {
+                if e_found == true {
+                    // Invalid, return false
+                    return false;
+                }
+                e_found = true;
+            } else {
+                return false;
+            }
+        }
+        false
     }
 
     pub fn new() -> Lexer {
