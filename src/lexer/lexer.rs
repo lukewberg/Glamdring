@@ -169,6 +169,12 @@ impl<'a> Lexer {
                         ScannerState::InNumber => {
                             // Exiting a number
                             // Can't validate number or get it's type without reaching a whitespace, newline, or operator
+                            if let Some(token) = self.get_number_token(&source_chars, start..i) {
+                                start = i;
+                                scanner_state = ScannerState::Idle;
+                                token_vec.push(token);
+                                continue;
+                            }
                         }
                         _ => {
                             // We have encountered white space
@@ -316,6 +322,9 @@ impl<'a> Lexer {
 
                             // Is current char a lexeme?
                             if let Some(_) = self.char_token_map.get(char) {
+                                if scanner_state == ScannerState::InNumber {
+                                    // Number has been terminated
+                                }
                                 if scanner_state != ScannerState::InOperator {
                                     start = i;
                                 } else if scanner_state == ScannerState::InIdentifier {
@@ -326,8 +335,18 @@ impl<'a> Lexer {
                                 scanner_state = ScannerState::InOperator;
                                 continue;
                             } else {
+                                // Check for number
+                                if let Ok(_) = char.to_string().parse::<i32>() {
+                                    // all number types in JS at least start with a number
+                                    if scanner_state != ScannerState::InNumber {
+                                        scanner_state = ScannerState::InNumber;
+                                        start = i;
+                                    }
+                                    continue;
+                                }
+
                                 // White space is caught above. The char is not a lexeme itself (not an operator)
-                                // At this point, we can't know if we're in a keyword, identifier or a number. Must test
+                                // At this point, we can't know if we're in a keyword or identifier. Must test
                                 if scanner_state != ScannerState::InIdentifier {
                                     // Just exited an operator, check for token between range
                                     if let Some(token) = self.get_token(&source_chars, start..i) {
@@ -335,15 +354,6 @@ impl<'a> Lexer {
                                         token_vec.push(token);
                                     }
                                     scanner_state = ScannerState::InIdentifier;
-                                    start = i;
-                                    continue;
-                                }
-                            }
-                            // Check for number
-                            if let Ok(_) = char.to_string().parse::<i32>() {
-                                // all number types in JS at least start with a number
-                                if scanner_state != ScannerState::InNumber {
-                                    scanner_state = ScannerState::InNumber;
                                     start = i;
                                     continue;
                                 }
@@ -373,7 +383,6 @@ impl<'a> Lexer {
         unimplemented!();
     }
 
-    #[inline]
     fn get_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
         // Check `token_map` to see if string is a keyword or operator
         let mut lexeme = String::with_capacity(source.len());
@@ -435,6 +444,10 @@ impl<'a> Lexer {
                     return Some(NumberType::Octal);
                 }
                 _ => {
+                    // Check if number is exponential, if it is, return
+                    if Lexer::is_number_exponential(source, range.start..range.end) == true {
+                        return Some(NumberType::Exponential);
+                    }
                     // Exponential have n digits followed by 'e' followed by an optional +- and then digits
                     // BigInt only ends with 'n', cannot start with 0
                     if last_char == 'n' {
@@ -474,9 +487,13 @@ impl<'a> Lexer {
     }
 
     fn is_number_exponential(source: &Vec<char>, range: Range<usize>) -> bool {
+        let source_chars = source[range].iter();
+        if source_chars.len() == 0 {
+            return false;
+        }
         let mut e_found = false;
         let mut sign_found = false;
-        for &char in source[range].iter() {
+        for &char in source_chars {
             // If we have already encountered 'e', the rest must be numbers or +/-
             // If not, continue to parse numbers.
             if let Ok(_) = char.to_string().parse::<i32>() {
@@ -496,7 +513,20 @@ impl<'a> Lexer {
                 return false;
             }
         }
-        false
+        return e_found;
+    }
+
+    fn is_number_terminated(source: &Vec<char>, index: usize) -> bool {
+        // To be used when an operator has been encountered while scanning through a number
+        // Numbers are terminated by spaces, operators, or chars not acceptable for their type
+        // We can only validate a number after it's boundaries are found.
+        // This function tests if we are at the end boundary
+
+        let previous_char = source[index - 1];
+        match (source[index - 1], source[index]) {
+            ( 'e' | 'E', '+' | '-') => false,
+            _ => true,
+        }
     }
 
     pub fn new() -> Lexer {
