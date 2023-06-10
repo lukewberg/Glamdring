@@ -132,6 +132,7 @@ impl<'a> Lexer {
 
     pub fn scan(&self, source: &str) -> Result<ScannerResult, ScanError> {
         let mut start = 0;
+        let mut line = 1;
 
         /* When we encounter a single-char lexeme like =, we keep proceeding
         until we encounter a char that is not a single-char lexeme */
@@ -169,7 +170,9 @@ impl<'a> Lexer {
                         ScannerState::InNumber => {
                             // Exiting a number
                             // Can't validate number or get it's type without reaching a whitespace, newline, or operator
-                            if let Some(token) = self.get_number_token(&source_chars, start..i) {
+                            if let Some(token) =
+                                self.get_number_token(&source_chars, start..i, line)
+                            {
                                 start = i;
                                 scanner_state = ScannerState::Idle;
                                 token_vec.push(token);
@@ -177,22 +180,26 @@ impl<'a> Lexer {
                             }
                         }
                         _ => {
-                            // We have encountered white space
-                            // Check to see if lexeme between `start` and `i`
+                            // When passing through newlines, start index gets incremented "onto" the new line
+                            // Because of this, when we check for a token and get none, \n get's added as an "identifier"
+                            // So we check for an imposter \n char
                             if source_chars[start] == '\n' {
                                 start = i;
-                                scanner_state = ScannerState::Idle;
+                                scanner_state = ScannerState::InWhitespace;
                                 continue;
                             }
-                            token_vec.push(self.get_token(&source_chars, start..i).unwrap_or_else(
-                                || {
-                                    Token::new(
-                                        start..i,
-                                        Tokens::Identifier,
-                                        Some(source_chars[start..i].iter().collect()),
-                                    )
-                                },
-                            ));
+                            // We have encountered white space
+                            // Check to see if lexeme between `start` and `i`
+                            token_vec.push(
+                                self.get_token(&source_chars, start..i, line)
+                                    .unwrap_or_else(|| {
+                                        Token::new(
+                                            line,
+                                            Tokens::Identifier,
+                                            Some(source_chars[start..i].iter().collect()),
+                                        )
+                                    }),
+                            );
                             // Since we are in white space, set this to true in case of contiguous
                             scanner_state = ScannerState::InWhitespace;
                         }
@@ -202,11 +209,11 @@ impl<'a> Lexer {
                     continue;
                 }
                 '/' => {
-                    // Could be a division token or the start/end of a comment/block comment
-                    // Check if last char was another `/`
                     if i == 0 {
                         continue;
                     }
+                    // Could be a division token or the start/end of a comment/block comment
+                    // Check if last char was another `/`
                     if source_chars[i - 1] == '/' {
                         // We are in a comment, change machine state
                         scanner_state = ScannerState::InComment;
@@ -238,11 +245,13 @@ impl<'a> Lexer {
                         }
                         ScannerState::InBlockComment | ScannerState::Idle => {
                             start = i;
+                            line += 1;
                             continue;
                         }
                         _ => {
                             // Because newline delimits tokens, capture and add token to result vec
-                            if let Some(token) = self.get_token(&source_chars, start..(i - 1)) {
+                            if let Some(token) = self.get_token(&source_chars, start..(i - 1), line)
+                            {
                                 token_vec.push(token);
                             }
                         }
@@ -251,6 +260,7 @@ impl<'a> Lexer {
                     // Scanner state is always idle when moving through newlines
                     scanner_state = ScannerState::Idle;
                     start = i;
+                    line += 1;
                     continue;
                 }
                 '*' => {
@@ -299,7 +309,7 @@ impl<'a> Lexer {
                                     continue;
                                 }
                                 token_vec.push(Token::new(
-                                    start..i,
+                                    line,
                                     Tokens::String,
                                     Some(source_chars[start..i + 1].iter().collect()),
                                 ));
@@ -324,13 +334,25 @@ impl<'a> Lexer {
                             if let Some(_) = self.char_token_map.get(char) {
                                 if scanner_state == ScannerState::InNumber {
                                     // Number has been terminated
+                                    if let Some(token) = Lexer::get_number_token(
+                                        &self,
+                                        &source_chars,
+                                        start..i,
+                                        line,
+                                    ) {
+                                        token_vec.push(token);
+                                        scanner_state = ScannerState::Idle;
+                                        start = i;
+                                        continue;
+                                    }
                                 }
                                 if scanner_state != ScannerState::InOperator {
                                     start = i;
                                 } else if scanner_state == ScannerState::InIdentifier {
                                     // If we were in an identifier, we need to close that out
-                                    token_vec
-                                        .push(self.get_token(&source_chars, start..i).unwrap());
+                                    token_vec.push(
+                                        self.get_token(&source_chars, start..i, line).unwrap(),
+                                    );
                                 }
                                 scanner_state = ScannerState::InOperator;
                                 continue;
@@ -345,11 +367,23 @@ impl<'a> Lexer {
                                     continue;
                                 }
 
+                                if scanner_state == ScannerState::InNumber {
+                                    // We're in a number but the current char is not a number
+                                    // It may be the end of the literal, check
+                                    if Lexer::is_number_terminated(&source_chars, i) == false {
+                                        // If not yet terminated, we want to continue.
+                                        // Else, we will transition below
+                                        continue;
+                                    }
+                                }
+
                                 // White space is caught above. The char is not a lexeme itself (not an operator)
                                 // At this point, we can't know if we're in a keyword or identifier. Must test
                                 if scanner_state != ScannerState::InIdentifier {
-                                    // Just exited an operator, check for token between range
-                                    if let Some(token) = self.get_token(&source_chars, start..i) {
+                                    // Just exited an operator or literal, check for token between range
+                                    if let Some(token) =
+                                        self.get_token(&source_chars, start..i, line)
+                                    {
                                         // There's a token, add to vec
                                         token_vec.push(token);
                                     }
@@ -383,7 +417,7 @@ impl<'a> Lexer {
         unimplemented!();
     }
 
-    fn get_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
+    fn get_token(&self, source: &Vec<char>, range: Range<usize>, line: u16) -> Option<Token> {
         // Check `token_map` to see if string is a keyword or operator
         let mut lexeme = String::with_capacity(source.len());
         for c in &source[range.start..range.end] {
@@ -393,7 +427,7 @@ impl<'a> Lexer {
             if let Some(token) = self.token_map.get(lexeme.as_str()) {
                 // We have found a keyword/operator, now add it to the result vector
                 // keywords/operators do not need to have their literal copied into the token
-                Some(Token::new(range, token.clone(), None))
+                Some(Token::new(line, token.clone(), None))
             } else {
                 None
             }
@@ -402,7 +436,7 @@ impl<'a> Lexer {
             let char = lexeme.chars().next().unwrap_or_default();
             if let Some(token) = self.char_token_map.get(&char) {
                 // keywords/operators do not need to have their literal copied into the token
-                Some(Token::new(range, token.clone(), None))
+                Some(Token::new(line, token.clone(), None))
             } else {
                 None
             }
@@ -417,6 +451,7 @@ impl<'a> Lexer {
                 return None;
             }
         };
+        // TODO: Convert this slop to tuples
         if let Some(array) = source.get(0..2) {
             let last_char = *(literal.last().unwrap());
             match array {
@@ -452,6 +487,14 @@ impl<'a> Lexer {
                     // BigInt only ends with 'n', cannot start with 0
                     if last_char == 'n' {
                         return Some(NumberType::BigInt);
+                    } else {
+                        // Normal int or decimal
+                        for &char in literal {
+                            if char == '.' {
+                                return Some(NumberType::Float);
+                            }
+                        }
+                        return Some(NumberType::Int);
                     }
                 }
             }
@@ -459,7 +502,12 @@ impl<'a> Lexer {
         None
     }
 
-    fn get_number_token(&self, source: &Vec<char>, range: Range<usize>) -> Option<Token> {
+    fn get_number_token(
+        &self,
+        source: &Vec<char>,
+        range: Range<usize>,
+        line: u16,
+    ) -> Option<Token> {
         // Validate number and get it's type
         // Array is on the stack, BLAZINGLY fast
         let token_type_array = [
@@ -478,7 +526,7 @@ impl<'a> Lexer {
         if let Some(number_type) = self.get_number_type(&source, &range) {
             let literal: String = source[range.start..range.end].iter().collect();
             return Some(Token::new(
-                range,
+                line,
                 token_type_array[number_type as usize].to_owned(),
                 Some(literal),
             ));
@@ -522,9 +570,8 @@ impl<'a> Lexer {
         // We can only validate a number after it's boundaries are found.
         // This function tests if we are at the end boundary
 
-        let previous_char = source[index - 1];
         match (source[index - 1], source[index]) {
-            ( 'e' | 'E', '+' | '-') => false,
+            ('e' | 'E', '+' | '-') => false,
             _ => true,
         }
     }

@@ -148,16 +148,16 @@ pub struct ScannerResult {
 pub struct Token {
     // pub start: u32,
     // pub end: u32,
-    pub range: Range<usize>,
+    pub line: u16,
     pub token_type: Tokens,
     pub lexeme: Option<String>,
     pub children: Option<Vec<Box<Token>>>,
 }
 
 impl Token {
-    pub fn new(range: Range<usize>, token_type: Tokens, lexeme: Option<String>) -> Token {
+    pub fn new(line: u16, token_type: Tokens, lexeme: Option<String>) -> Token {
         Token {
-            range,
+            line,
             token_type,
             lexeme,
             children: None,
