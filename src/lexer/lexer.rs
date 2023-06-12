@@ -35,6 +35,7 @@ impl<'a> Lexer {
             ("in", Tokens::In),
             ("Infinity", Tokens::Infinity),
             ("instanceof", Tokens::Instanceof),
+            ("let", Tokens::Let),
             ("new", Tokens::New),
             ("null", Tokens::Null),
             ("return", Tokens::Return),
@@ -346,27 +347,18 @@ impl<'a> Lexer {
                                         continue;
                                     }
                                 }
-                                if scanner_state != ScannerState::InOperator {
-                                    start = i;
-                                } else if scanner_state == ScannerState::InIdentifier {
+                                if scanner_state == ScannerState::InIdentifier {
                                     // If we were in an identifier, we need to close that out
                                     token_vec.push(
                                         self.get_token(&source_chars, start..i, line).unwrap(),
                                     );
                                 }
+                                // If there was an identifier, it has been closed out, current char may be part of operator
+
                                 scanner_state = ScannerState::InOperator;
+                                start = i;
                                 continue;
                             } else {
-                                // Check for number
-                                if let Ok(_) = char.to_string().parse::<i32>() {
-                                    // all number types in JS at least start with a number
-                                    if scanner_state != ScannerState::InNumber {
-                                        scanner_state = ScannerState::InNumber;
-                                        start = i;
-                                    }
-                                    continue;
-                                }
-
                                 if scanner_state == ScannerState::InNumber {
                                     // We're in a number but the current char is not a number
                                     // It may be the end of the literal, check
@@ -381,6 +373,15 @@ impl<'a> Lexer {
                                 // At this point, we can't know if we're in a keyword or identifier. Must test
                                 if scanner_state != ScannerState::InIdentifier {
                                     // Just exited an operator or literal, check for token between range
+                                    // Check for number
+                                    if let Ok(_) = char.to_string().parse::<i32>() {
+                                        // all number types in JS at least start with a number
+                                        if scanner_state != ScannerState::InNumber {
+                                            scanner_state = ScannerState::InNumber;
+                                            start = i;
+                                        }
+                                        continue;
+                                    }
                                     if let Some(token) =
                                         self.get_token(&source_chars, start..i, line)
                                     {

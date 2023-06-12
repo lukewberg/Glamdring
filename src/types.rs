@@ -24,6 +24,7 @@ pub enum Tokens {
     Import,
     In,
     Instanceof,
+    Let,
     New,
     Null,
     Return,
