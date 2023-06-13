@@ -113,16 +113,16 @@ pub enum Tokens {
     BigFloat,
     BigHex,
     BigBinary,
-    BigOctal
+    BigOctal,
 }
 
 #[derive(Debug)]
 pub enum ScanError {
-    UnexpectedCharacter { character: char, location: usize },
-    UnexpectedToken { token: String, location: usize },
-    UnexpectedOperator { token: String, location: usize },
-    UnexpectedIdentifier { token: String, location: usize },
-    InvalidSyntax { token: String, location: usize },
+    UnexpectedCharacter { character: char, line: u16 },
+    UnexpectedToken { token: String, line: u16 },
+    UnexpectedOperator { token: String, line: u16 },
+    UnexpectedIdentifier { token: String, line: u16 },
+    InvalidSyntax { token: String, line: u16 },
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -137,6 +137,7 @@ pub enum ScannerState {
     InComment,
     InBlockComment,
     InWhitespace,
+    InPunctuator,
 }
 
 #[derive(Debug)]
