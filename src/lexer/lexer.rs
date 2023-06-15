@@ -1,15 +1,17 @@
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
+
+use ahash::AHashMap;
 
 use crate::types::{NumberType, ScanError, ScannerResult, ScannerState, Token, Tokens};
 
 pub struct Lexer {
-    token_map: HashMap<&'static str, Tokens>,
-    char_operator_token_map: HashMap<char, Tokens>,
+    token_map: AHashMap<&'static str, Tokens>,
+    char_operator_token_map: AHashMap<char, Tokens>,
 }
 
-impl<'a> Lexer {
-    fn build_token_map() -> HashMap<&'static str, Tokens> {
-        HashMap::from([
+impl Lexer {
+    fn build_token_map() -> AHashMap<&'static str, Tokens> {
+        AHashMap::from([
             ("function", Tokens::Function),
             ("await", Tokens::Await),
             ("break", Tokens::Break),
@@ -87,8 +89,8 @@ impl<'a> Lexer {
         ])
     }
 
-    fn build_char_operator_token_map() -> HashMap<char, Tokens> {
-        HashMap::from([
+    fn build_char_operator_token_map() -> AHashMap<char, Tokens> {
+        AHashMap::from([
             ('.', Tokens::Dot),
             ('<', Tokens::LessThan),
             ('>', Tokens::GreaterThan),
@@ -249,6 +251,12 @@ impl<'a> Lexer {
                             line += 1;
                             continue;
                         }
+                        ScannerState::InPunctuator => {
+                            // Most likely a semicolon
+                            if let Some(token) = self.get_token(&source_chars, start..i, line) {
+                                token_vec.push(token);
+                            }
+                        }
                         _ => {
                             // Because newline delimits tokens, capture and add token to result vec
                             if let Some(token) = self.get_token(&source_chars, start..(i - 1), line)
@@ -400,6 +408,9 @@ impl<'a> Lexer {
                                         }
                                     }
                                     ScannerState::InPunctuator => {
+                                        // We know current char is not an operator or part of one
+                                        // Last char (at index start) was a punctuator
+                                        // We can assume that we are currently in an identifier
                                         if let Some(token_type) =
                                             self.char_operator_token_map.get(&(source_chars[start]))
                                         {
@@ -427,10 +438,10 @@ impl<'a> Lexer {
                                     }
                                     continue;
                                 }
-                                if let Some(token) = self.get_token(&source_chars, start..i, line) {
-                                    // There's a token, add to vec
-                                    token_vec.push(token);
-                                }
+                                // if let Some(token) = self.get_token(&source_chars, start..i, line) {
+                                //     // There's a token, add to vec
+                                //     token_vec.push(token);
+                                // }
                                 scanner_state = ScannerState::InIdentifier;
                                 start = i;
                                 continue;
@@ -629,6 +640,7 @@ impl<'a> Lexer {
             | Tokens::CloseBrace
             | Tokens::Semicolon
             | Tokens::Comma
+            | Tokens::Dot
             | Tokens::Colon => true,
             _ => false,
         }

@@ -6,6 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ahash = "0.8.3"
 rayon = "1.7.0"
 regex = "1.7.3"
 serde = "1.0.163"
+
+[profile.release]
+opt-level = 3
+strip = "debuginfo"
+lto = "fat"

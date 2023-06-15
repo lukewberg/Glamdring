@@ -11,7 +11,9 @@ fn main() {
     let lexer = Lexer::new();
     let now = Instant::now();
     match lexer.scan(&file_string) {
-        Ok(result) => println!("{:#?}", result),
+        Ok(_result) => {
+            println!("{:#?}", _result)
+        },
         Err(error) => {
             println!("Error while scanning: {:#?}", error)
         }
