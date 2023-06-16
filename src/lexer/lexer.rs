@@ -1,16 +1,16 @@
-use std::ops::Range;
+use std::{mem::size_of, ops::Range};
 
 use ahash::AHashMap;
 
 use crate::types::{NumberType, ScanError, ScannerResult, ScannerState, Token, Tokens};
 
-pub struct Lexer {
-    token_map: AHashMap<&'static str, Tokens>,
-    char_operator_token_map: AHashMap<char, Tokens>,
+pub struct Lexer<'a> {
+    token_map: &'a AHashMap<&'static str, Tokens>,
+    char_operator_token_map: &'a AHashMap<char, Tokens>,
 }
 
-impl Lexer {
-    fn build_token_map() -> AHashMap<&'static str, Tokens> {
+impl Lexer<'_> {
+    pub fn build_token_map() -> AHashMap<&'static str, Tokens> {
         AHashMap::from([
             ("function", Tokens::Function),
             ("await", Tokens::Await),
@@ -89,7 +89,7 @@ impl Lexer {
         ])
     }
 
-    fn build_char_operator_token_map() -> AHashMap<char, Tokens> {
+    pub fn build_char_operator_token_map() -> AHashMap<char, Tokens> {
         AHashMap::from([
             ('.', Tokens::Dot),
             ('<', Tokens::LessThan),
@@ -115,6 +115,8 @@ impl Lexer {
             (';', Tokens::Semicolon),
             (',', Tokens::Comma),
             (':', Tokens::Colon),
+            ('"', Tokens::DoubleQuote),
+            ('\'', Tokens::SingleQuote),
         ])
     }
 
@@ -143,12 +145,9 @@ impl Lexer {
         // Machine state defaults to Idle
         let mut scanner_state = ScannerState::Idle;
 
-        // Convert source string into a char vec so we can index into it
-        let source_chars: Vec<char> = source.chars().collect();
+        let mut token_vec: Vec<Token> = Vec::with_capacity(size_of::<Token>() * 500);
 
-        let mut token_vec: Vec<Token> = Vec::new();
-
-        for (i, char) in source_chars.iter().enumerate() {
+        for (i, char) in source.char_indices() {
             // thread::sleep(time::Duration::from_millis(1200));
             match char {
                 ' ' => {
@@ -173,9 +172,7 @@ impl Lexer {
                         ScannerState::InNumber => {
                             // Exiting a number
                             // Can't validate number or get it's type without reaching a whitespace, newline, or operator
-                            if let Some(token) =
-                                self.get_number_token(&source_chars, start..i, line)
-                            {
+                            if let Some(token) = self.get_number_token(&source, start..i, line) {
                                 start = i;
                                 scanner_state = ScannerState::Idle;
                                 token_vec.push(token);
@@ -186,23 +183,22 @@ impl Lexer {
                             // When passing through newlines, start index gets incremented "onto" the new line
                             // Because of this, when we check for a token and get none, \n get's added as an "identifier"
                             // So we check for an imposter \n char
-                            if source_chars[start] == '\n' {
+                            if &source[start..start] == "\n" {
                                 start = i;
                                 scanner_state = ScannerState::InWhitespace;
                                 continue;
                             }
                             // We have encountered white space
                             // Check to see if lexeme between `start` and `i`
-                            token_vec.push(
-                                self.get_token(&source_chars, start..i, line)
-                                    .unwrap_or_else(|| {
-                                        Token::new(
-                                            line,
-                                            Tokens::Identifier,
-                                            Some(source_chars[start..i].iter().collect()),
-                                        )
-                                    }),
-                            );
+                            token_vec.push(self.get_token(&source, start..i, line).unwrap_or_else(
+                                || {
+                                    Token::new(
+                                        line,
+                                        &Tokens::Identifier,
+                                        Some(source[start..i].to_string()),
+                                    )
+                                },
+                            ));
                             // Since we are in white space, set this to true in case of contiguous
                             scanner_state = ScannerState::InWhitespace;
                         }
@@ -217,10 +213,10 @@ impl Lexer {
                     }
                     // Could be a division token or the start/end of a comment/block comment
                     // Check if last char was another `/`
-                    if source_chars[i - 1] == '/' {
+                    if &source[i - 1..i] == "/" {
                         // We are in a comment, change machine state
                         scanner_state = ScannerState::InComment;
-                    } else if source_chars[i - 1] == '*' {
+                    } else if &source[i - 1..i] == "*" {
                         // We have exited a block comment
                         scanner_state = ScannerState::Idle;
                     } else {
@@ -253,14 +249,13 @@ impl Lexer {
                         }
                         ScannerState::InPunctuator => {
                             // Most likely a semicolon
-                            if let Some(token) = self.get_token(&source_chars, start..i, line) {
+                            if let Some(token) = self.get_token(&source, start..i, line) {
                                 token_vec.push(token);
                             }
                         }
                         _ => {
                             // Because newline delimits tokens, capture and add token to result vec
-                            if let Some(token) = self.get_token(&source_chars, start..(i - 1), line)
-                            {
+                            if let Some(token) = self.get_token(&source, start..(i - 1), line) {
                                 token_vec.push(token);
                             }
                         }
@@ -276,12 +271,12 @@ impl Lexer {
                     // Asterisk can be an operator, part of an operator or signify the start of a block comment (if preceded by a `/`)
                     if scanner_state == ScannerState::InOperator {
                         // If we find a preceding '/' char, we're in a block comment
-                        if *&source_chars[i - 1] == '/' {
+                        if &source[i - 1..i] == "/" {
                             scanner_state = ScannerState::InBlockComment;
                             continue;
                         }
                     }
-                    if source_chars[i - 1] == '/' {
+                    if &source[i - 1..i] == "/" {
                         scanner_state = ScannerState::InBlockComment;
                     } else {
                         // If no '/' char is behind us, we must be part of a normal operator. Will catch in another match arm
@@ -303,24 +298,24 @@ impl Lexer {
                             // Check to see if we're at the end of the string
                             // String ends with same char as it began, either ' or "
                             // Also check for escape backslash
-                            if (*char == '"' || *char == '\'')
+                            if (char == '"' || char == '\'')
                                 && (scanner_state == ScannerState::InStringDouble
                                     || scanner_state == ScannerState::InStringSingle)
                             {
                                 // Check for escape at previous index
                                 // Only check if the escaped char is the same as what started the string
-                                if (*char == '"' && scanner_state == ScannerState::InStringDouble
-                                    || *char == '\''
+                                if (char == '"' && scanner_state == ScannerState::InStringDouble
+                                    || char == '\''
                                         && scanner_state == ScannerState::InStringSingle)
-                                    && source_chars[i - 1] == '\\'
+                                    && &source[i - 1..i] == "\\"
                                 {
                                     // We are still in the string, continue
                                     continue;
                                 }
                                 token_vec.push(Token::new(
                                     line,
-                                    Tokens::String,
-                                    Some(source_chars[start..i + 1].iter().collect()),
+                                    &Tokens::String,
+                                    Some(source[start..i + 1].to_string()),
                                 ));
                                 scanner_state = ScannerState::Idle;
                                 start = i;
@@ -328,11 +323,11 @@ impl Lexer {
                             }
                         }
                         _ => {
-                            if *char == '"' && scanner_state != ScannerState::InStringDouble {
+                            if char == '"' && scanner_state != ScannerState::InStringDouble {
                                 scanner_state = ScannerState::InStringDouble;
                                 start = i;
                                 continue;
-                            } else if *char == '\'' && scanner_state != ScannerState::InStringSingle
+                            } else if char == '\'' && scanner_state != ScannerState::InStringSingle
                             {
                                 scanner_state = ScannerState::InStringSingle;
                                 start = i;
@@ -340,16 +335,13 @@ impl Lexer {
                             }
 
                             // Is current char a lexeme
-                            if let Some(char_token) = self.char_operator_token_map.get(char) {
+                            if let Some(char_token) = self.char_operator_token_map.get(&char) {
                                 match scanner_state {
                                     ScannerState::InNumber => {
                                         // Number has been terminated
-                                        if let Some(token) = Lexer::get_number_token(
-                                            &self,
-                                            &source_chars,
-                                            start..i,
-                                            line,
-                                        ) {
+                                        if let Some(token) =
+                                            Lexer::get_number_token(&self, &source, start..i, line)
+                                        {
                                             token_vec.push(token);
                                             // scanner_state = ScannerState::InOperator;
                                             // start = i;
@@ -358,15 +350,14 @@ impl Lexer {
                                     }
                                     ScannerState::InIdentifier => {
                                         // If we were in an identifier or other token, we need to close that out
-                                        if let Some(token) =
-                                            self.get_token(&source_chars, start..i, line)
+                                        if let Some(token) = self.get_token(&source, start..i, line)
                                         {
                                             token_vec.push(token);
                                         } else {
                                             token_vec.push(Token::new(
                                                 line,
-                                                Tokens::Identifier,
-                                                Some(source_chars[start..i].iter().collect()),
+                                                &Tokens::Identifier,
+                                                Some(source[start..i].to_string()),
                                             ));
                                         }
                                     }
@@ -378,10 +369,7 @@ impl Lexer {
                                         // Last char was a punctuator, add to token_vec
                                         token_vec.push(Token::new(
                                             line,
-                                            self.char_operator_token_map
-                                                .get(&source_chars[start])
-                                                .unwrap()
-                                                .to_owned(),
+                                            self.char_operator_token_map.get(&char).unwrap(),
                                             None,
                                         ))
                                     }
@@ -401,7 +389,7 @@ impl Lexer {
                                     ScannerState::InNumber => {
                                         // We're in a number but the current char is not a number
                                         // It may be the end of the literal, check
-                                        if Lexer::is_number_terminated(&source_chars, i) == false {
+                                        if Lexer::is_number_terminated(&source, i) == false {
                                             // If not yet terminated, we want to continue.
                                             // Else, we will transition below
                                             continue;
@@ -412,13 +400,9 @@ impl Lexer {
                                         // Last char (at index start) was a punctuator
                                         // We can assume that we are currently in an identifier
                                         if let Some(token_type) =
-                                            self.char_operator_token_map.get(&(source_chars[start]))
+                                            self.char_operator_token_map.get(&char)
                                         {
-                                            token_vec.push(Token::new(
-                                                line,
-                                                token_type.to_owned(),
-                                                None,
-                                            ));
+                                            token_vec.push(Token::new(line, token_type, None));
                                         }
                                     }
                                     ScannerState::InIdentifier => {
@@ -438,7 +422,7 @@ impl Lexer {
                                     }
                                     continue;
                                 }
-                                // if let Some(token) = self.get_token(&source_chars, start..i, line) {
+                                // if let Some(token) = self.get_token(&source_chars_chars, start..i, line) {
                                 //     // There's a token, add to vec
                                 //     token_vec.push(token);
                                 // }
@@ -471,17 +455,18 @@ impl Lexer {
         unimplemented!();
     }
 
-    fn get_token(&self, source: &Vec<char>, range: Range<usize>, line: u16) -> Option<Token> {
+    fn get_token(&self, source: &str, range: Range<usize>, line: u16) -> Option<Token> {
         // Check `token_map` to see if string is a keyword or operator
-        let mut lexeme = String::with_capacity(source.len());
-        for c in &source[range.start..range.end] {
-            lexeme.push(*c);
-        }
+        let lexeme = &source[range.start..range.end];
+        // for c in &source[range.start..range.end] {
+        //     lexeme.push(*c);
+        // }
+        // let lexeme = Lexer::slice_string(source, range);
         if lexeme.len() > 1 {
-            if let Some(token) = self.token_map.get(lexeme.as_str()) {
+            if let Some(token) = self.token_map.get(lexeme) {
                 // We have found a keyword/operator, now add it to the result vector
                 // keywords/operators do not need to have their literal copied into the token
-                Some(Token::new(line, token.clone(), None))
+                Some(Token::new(line, token, None))
             } else {
                 None
             }
@@ -490,14 +475,14 @@ impl Lexer {
             let char = lexeme.chars().next().unwrap_or_default();
             if let Some(token) = self.char_operator_token_map.get(&char) {
                 // keywords/operators do not need to have their literal copied into the token
-                Some(Token::new(line, token.clone(), None))
+                Some(Token::new(line, token, None))
             } else {
                 None
             }
         }
     }
 
-    fn get_number_type(&self, source: &Vec<char>, range: &Range<usize>) -> Option<NumberType> {
+    fn get_number_type(&self, source: &str, range: &Range<usize>) -> Option<NumberType> {
         // Get string of the first couple chars
         let literal = match source.get(range.start..range.end) {
             Some(result) => result,
@@ -506,28 +491,27 @@ impl Lexer {
             }
         };
         // TODO: Convert this slop to tuples
-        if let Some(array) = source.get(0..2) {
-            let last_char = *(literal.last().unwrap());
-            match array {
-                ['0', 'x'] | ['0', 'X'] => {
+        if let Some(slice) = source.get(0..2) {
+            match slice {
+                "0x" | "0X" => {
                     // Hex
-                    if last_char == 'n' {
+                    if literal.ends_with('n') == true {
                         // BigHex
                         return Some(NumberType::BigHex);
                     }
                     return Some(NumberType::Hex);
                 }
-                ['0', 'b'] | ['0', 'B'] => {
+                "0b" | "0B" => {
                     // Binary
-                    if last_char == 'n' {
+                    if literal.ends_with('n') == true {
                         // BigBinary
                         return Some(NumberType::BigBinary);
                     }
                     return Some(NumberType::Binary);
                 }
-                ['0', 'o'] | ['0', 'O'] => {
+                "0o" | "0O" => {
                     // Octal
-                    if last_char == 'n' {
+                    if literal.ends_with('n') == true {
                         return Some(NumberType::BigOctal);
                     }
                     return Some(NumberType::Octal);
@@ -539,11 +523,11 @@ impl Lexer {
                     }
                     // Exponential have n digits followed by 'e' followed by an optional +- and then digits
                     // BigInt only ends with 'n', cannot start with 0
-                    if last_char == 'n' {
+                    if literal.ends_with('n') == true {
                         return Some(NumberType::BigInt);
                     } else {
                         // Normal int or decimal
-                        for &char in literal {
+                        for char in literal.chars() {
                             if char == '.' {
                                 return Some(NumberType::Float);
                             }
@@ -556,15 +540,10 @@ impl Lexer {
         None
     }
 
-    fn get_number_token(
-        &self,
-        source: &Vec<char>,
-        range: Range<usize>,
-        line: u16,
-    ) -> Option<Token> {
+    fn get_number_token(&self, source: &str, range: Range<usize>, line: u16) -> Option<Token> {
         // Validate number and get it's type
         // Array is on the stack, BLAZINGLY fast
-        let token_type_array = [
+        static token_type_array: [Tokens; 10] = [
             Tokens::Float,
             Tokens::Int,
             Tokens::Hex,
@@ -578,24 +557,24 @@ impl Lexer {
         ];
 
         if let Some(number_type) = self.get_number_type(&source, &range) {
-            let literal: String = source[range.start..range.end].iter().collect();
+            let literal = &source[range.start..range.end];
             return Some(Token::new(
                 line,
-                token_type_array[number_type as usize].to_owned(),
-                Some(literal),
+                &token_type_array[number_type as usize],
+                Some(literal.to_owned()),
             ));
         }
         None
     }
 
-    fn is_number_exponential(source: &Vec<char>, range: Range<usize>) -> bool {
-        let source_chars = source[range].iter();
+    fn is_number_exponential(source: &str, range: Range<usize>) -> bool {
+        let source_chars = &source[range];
         if source_chars.len() == 0 {
             return false;
         }
         let mut e_found = false;
         let mut sign_found = false;
-        for &char in source_chars {
+        for char in source_chars.chars() {
             // If we have already encountered 'e', the rest must be numbers or +/-
             // If not, continue to parse numbers.
             if let Ok(_) = char.to_string().parse::<i32>() {
@@ -618,14 +597,13 @@ impl Lexer {
         return e_found;
     }
 
-    fn is_number_terminated(source: &Vec<char>, index: usize) -> bool {
+    fn is_number_terminated(source: &str, index: usize) -> bool {
         // To be used when an operator has been encountered while scanning through a number
         // Numbers are terminated by spaces, operators, or chars not acceptable for their type
         // We can only validate a number after it's boundaries are found.
         // This function tests if we are at the end boundary
-
-        match (source[index - 1], source[index]) {
-            ('e' | 'E', '+' | '-') => false,
+        match (&source[index - 1..index], &source[index..index]) {
+            ("e" | "E", "+" | "-") => false,
             _ => true,
         }
     }
@@ -646,10 +624,13 @@ impl Lexer {
         }
     }
 
-    pub fn new() -> Lexer {
+    pub fn new<'a>(
+        token_map: &'a AHashMap<&'static str, Tokens>,
+        char_operator_token_map: &'a AHashMap<char, Tokens>,
+    ) -> Lexer<'a> {
         Lexer {
-            token_map: Self::build_token_map(),
-            char_operator_token_map: Self::build_char_operator_token_map(),
+            token_map,
+            char_operator_token_map,
         }
     }
 }
