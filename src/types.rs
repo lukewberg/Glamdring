@@ -11,8 +11,6 @@ pub enum Tokens {
     Debugger,
     Default,
     Delete,
-    DoubleQuote,
-    SingleQuote,
     Do,
     Else,
     Enum,

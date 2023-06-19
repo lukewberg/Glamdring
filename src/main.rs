@@ -1,5 +1,5 @@
 use std::{env, fs, time::Instant};
-use weblex::lexer::lexer::Lexer;
+use weblex::{lexer::lexer::Lexer, util::stats::report_scanning_statistics};
 
 fn main() {
     // Collect command-line arguments
@@ -15,11 +15,8 @@ fn main() {
     match lexer.scan(&file_string) {
         Ok(_result) => {
             // println!("{:#?}", _result);
-            println!(
-                "Scanned {} tokens in: {:.2?}",
-                _result.token_vec.len(),
-                now.elapsed()
-            );
+            println!("Scanned in: {:.2?}", now.elapsed());
+            report_scanning_statistics(&_result);
         }
         Err(error) => {
             println!("Error while scanning: {:#?}", error)

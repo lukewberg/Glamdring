@@ -115,8 +115,6 @@ impl Lexer<'_> {
             (';', Tokens::Semicolon),
             (',', Tokens::Comma),
             (':', Tokens::Colon),
-            ('"', Tokens::DoubleQuote),
-            ('\'', Tokens::SingleQuote),
         ])
     }
 
@@ -323,17 +321,6 @@ impl Lexer<'_> {
                             }
                         }
                         _ => {
-                            if char == '"' && scanner_state != ScannerState::InStringDouble {
-                                scanner_state = ScannerState::InStringDouble;
-                                start = i;
-                                continue;
-                            } else if char == '\'' && scanner_state != ScannerState::InStringSingle
-                            {
-                                scanner_state = ScannerState::InStringSingle;
-                                start = i;
-                                continue;
-                            }
-
                             // Is current char a lexeme
                             if let Some(char_token) = self.char_operator_token_map.get(&char) {
                                 match scanner_state {
@@ -420,6 +407,18 @@ impl Lexer<'_> {
                                         scanner_state = ScannerState::InNumber;
                                         start = i;
                                     }
+                                    continue;
+                                }
+                                
+                                if char == '"' && scanner_state != ScannerState::InStringDouble {
+                                    scanner_state = ScannerState::InStringDouble;
+                                    start = i;
+                                    continue;
+                                } else if char == '\''
+                                    && scanner_state != ScannerState::InStringSingle
+                                {
+                                    scanner_state = ScannerState::InStringSingle;
+                                    start = i;
                                     continue;
                                 }
                                 // if let Some(token) = self.get_token(&source_chars_chars, start..i, line) {
