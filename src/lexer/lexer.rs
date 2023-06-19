@@ -181,7 +181,7 @@ impl Lexer<'_> {
                             // When passing through newlines, start index gets incremented "onto" the new line
                             // Because of this, when we check for a token and get none, \n get's added as an "identifier"
                             // So we check for an imposter \n char
-                            if &source[start..start] == "\n" {
+                            if &source[start..i] == "\n" {
                                 start = i;
                                 scanner_state = ScannerState::InWhitespace;
                                 continue;
@@ -356,7 +356,9 @@ impl Lexer<'_> {
                                         // Last char was a punctuator, add to token_vec
                                         token_vec.push(Token::new(
                                             line,
-                                            self.char_operator_token_map.get(&char).unwrap(),
+                                            self.char_operator_token_map
+                                                .get(&source[start..i].chars().next().unwrap())
+                                                .unwrap(),
                                             None,
                                         ))
                                     }
@@ -409,7 +411,7 @@ impl Lexer<'_> {
                                     }
                                     continue;
                                 }
-                                
+
                                 if char == '"' && scanner_state != ScannerState::InStringDouble {
                                     scanner_state = ScannerState::InStringDouble;
                                     start = i;
