@@ -187,6 +187,8 @@ pub enum NumberType {
     BigHex,
     BigBinary,
     BigOctal,
+    // Intermediate type
+    Undetermined,
 }
 
 pub enum TestEnum {

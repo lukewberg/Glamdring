@@ -1,6 +1,14 @@
 use std::{env, fs, time::Instant};
 use weblex::{lexer::lexer::Lexer, util::stats::report_scanning_statistics};
 
+// fn main() {
+//     let time = Instant::now();
+//     for i in 0..1_000_000_000 {
+//         continue;
+//     }
+//     println!("{:.2?}", time.elapsed());
+// }
+
 fn main() {
     // Collect command-line arguments
     let args: Vec<String> = env::args().collect();
@@ -12,9 +20,9 @@ fn main() {
     let char_token_map = Lexer::build_char_operator_token_map();
     let lexer = Lexer::new(&token_hashmap, &char_token_map);
     let now = Instant::now();
-    match lexer.scan(&file_string) {
+    match lexer.scan(file_string) {
         Ok(_result) => {
-            println!("{:#?}", _result);
+            // println!("{:#?}", _result);
             println!("Scanned in: {:.2?}", now.elapsed());
             report_scanning_statistics(&_result);
         }

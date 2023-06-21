@@ -1,4 +1,9 @@
-use std::{mem::size_of, ops::Range};
+use std::{
+    iter::Peekable,
+    mem::size_of,
+    ops::{Range, RangeInclusive},
+    str::CharIndices, thread::current,
+};
 
 use ahash::AHashMap;
 
@@ -9,7 +14,7 @@ pub struct Lexer<'a> {
     char_operator_token_map: &'a AHashMap<char, Tokens>,
 }
 
-impl Lexer<'_> {
+impl<'a> Lexer<'a> {
     pub fn build_token_map() -> AHashMap<&'static str, Tokens> {
         AHashMap::from([
             ("function", Tokens::Function),
@@ -133,7 +138,12 @@ impl Lexer<'_> {
     //     ])
     // }
 
-    pub fn scan(&self, source: &str) -> Result<ScannerResult, ScanError> {
+    // pub fn load(&'a mut self, source: String) {
+    //     self.source = source;
+    //     self.source_iterator = self.source.char_indices();
+    // }
+
+    pub fn scan(&self, source: String) -> Result<ScannerResult, ScanError> {
         let mut start = 0;
         let mut line = 1;
 
@@ -144,8 +154,9 @@ impl Lexer<'_> {
         let mut scanner_state = ScannerState::Idle;
 
         let mut token_vec: Vec<Token> = Vec::with_capacity(size_of::<Token>() * 500);
+        let mut source_iterator = source.char_indices().peekable();
 
-        for (i, char) in source.char_indices() {
+        while let Some((i, char)) = source_iterator.next() {
             // thread::sleep(time::Duration::from_millis(1200));
             match char {
                 ' ' => {
@@ -443,13 +454,86 @@ impl Lexer<'_> {
         })
     }
 
-    // fn peek(&self, target: char, index: usize) -> bool {
-    //     if index < self.source.len() {
-    //         self.source.chars().nth(index).unwrap() == target
-    //     } else {
-    //         false
-    //     }
-    // }
+    fn scan_identifier(&self, source_iterator: &mut Peekable<CharIndices<'_>>) -> Option<usize> {
+        // The item at `next` should have already been peeked, we're sure to be at the start of an identifier
+        while let Some((index, _)) = source_iterator.next() {
+            /* Things that terminate identifiers:
+               punctuators,
+               spaces,
+               operators,
+               newlines
+            */
+            // Chars form an identifier as long as we don't encounter a space or operator
+            if let Some((_, _char)) = source_iterator.peek() {
+                match _char {
+                    '\n' | '\r' | ' ' => {
+                        return Some(index);
+                    }
+                    _ => (),
+                }
+                if let Some(_) = self.char_operator_token_map.get(_char) {
+                    // End of the lexeme!
+                    return Some(index);
+                }
+            }
+        }
+        None
+    }
+
+    fn scan_number(&self, source_iterator: &mut Peekable<CharIndices<'_>>) -> Option<(usize, NumberType)> {
+        let mut number_type = NumberType::Undetermined;
+        while let Some((index, _current_char)) = source_iterator.next() {
+            /* Things that terminate numbers:
+               spaces,
+               most operators
+               punctuators
+               'n'
+            */
+            match number_type {
+                NumberType::Float | NumberType::Int | NumberType::Exponential => {
+                    // Valid so long as no '.' or letters proceed
+                },
+                // Valid so long as chars are 'A'..='F' or '0'..='9'
+                NumberType::Hex => {
+                    if ('A'..='F').contains(&_current_char) || ('0'..='9').contains(&_current_char) {
+                        
+                    }
+                },
+                NumberType::Octal => {
+                    // Valid so long as chars are '0'..='7'
+                },
+                NumberType::Binary => {
+                    // Valid so long as chars are '0'..='1'
+                },
+                NumberType::BigInt => todo!(),
+                NumberType::BigHex => todo!(),
+                NumberType::BigBinary => todo!(),
+                NumberType::BigOctal => todo!(),
+                NumberType::Undetermined => {
+                    // We're not yet sure, perform some checks
+                    if let Some((index, _char)) = source_iterator.peek() {
+                        // First, numbers can only contain these chars
+                        match _char {
+                            '0'..='9' => {},
+                            'A'..='F' => {},
+                            'x' | 'X' | 'o' | 'O' | 'n' => (),
+                            _ => return None
+                        };
+                        // This should be run on the first 2 chars of the
+                        match (_current_char, _char) {
+                            ('0', 'x' | 'X') => number_type = NumberType::Hex,
+                            ('0', 'b' | 'B') => number_type = NumberType::Binary,
+                            ('0', 'o' | '0') => number_type = NumberType::Octal,
+                            ('0'..='9', '.') => number_type = NumberType::Float,
+                            // Can't tell yet
+                            _ => ()
+                        };
+                    }
+                }
+            }
+        }
+        None
+    }
 
     fn scan_template_string(source: &Vec<char>) -> () {
         // TODO: Implement
@@ -625,7 +709,7 @@ impl Lexer<'_> {
         }
     }
 
-    pub fn new<'a>(
+    pub fn new(
         token_map: &'a AHashMap<&'static str, Tokens>,
         char_operator_token_map: &'a AHashMap<char, Tokens>,
     ) -> Lexer<'a> {
