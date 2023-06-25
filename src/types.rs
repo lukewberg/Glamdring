@@ -143,6 +143,7 @@ pub enum ScannerState {
 #[derive(Debug)]
 pub struct ScannerResult<'a> {
     pub file_name: String,
+    pub source: &'a String,
     pub token_vec: Vec<Token<'a>>,
 }
 
@@ -152,27 +153,19 @@ pub struct Token<'a> {
     // pub end: u32,
     pub line: u16,
     pub token_type: &'a Tokens,
-    pub lexeme: Option<String>,
+    pub lexeme: Option<&'a str>,
     pub children: Option<Vec<Box<Token<'a>>>>,
 }
 
-impl Token<'_> {
-    pub fn new(line: u16, token_type: &Tokens, lexeme: Option<String>) -> Token<'_> {
-        Token {
+impl<'a> Token<'a> {
+    pub fn new(line: u16, token_type: &'a Tokens, lexeme: Option<&'a str>) -> Self {
+        Self {
             line,
             token_type,
             lexeme,
             children: None,
         }
     }
-
-    // pub fn add_child(mut self, token: Token) -> () {
-    //     if let Some(mut children) = self.children {
-    //         children.push(Box::new(token));
-    //     } else {
-    //         self.children = Some(vec![Box::new(token)]);
-    //     }
-    // }
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]

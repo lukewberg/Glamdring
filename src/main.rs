@@ -9,18 +9,22 @@ use weblex::{lexer::lexer::Lexer, util::stats::report_scanning_statistics};
 //     println!("{:.2?}", time.elapsed());
 // }
 
-fn main() {
+fn main() -> Result<(), usize> {
     // Collect command-line arguments
     let args: Vec<String> = env::args().collect();
     let file_path = &args.get(1).expect("No input supplied, aborting!");
     // println!("Path: {file_path}");
 
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");
-    let token_hashmap = Lexer::build_token_map();
-    let char_token_map = Lexer::build_char_operator_token_map();
-    let lexer = Lexer::new(&token_hashmap, &char_token_map);
+    let (token_hashmap, char_token_hashmap, char_punctuator_hashmap) = Lexer::get_maps();
+
+    let lexer = Lexer::new(
+        &token_hashmap,
+        &char_token_hashmap,
+        &char_punctuator_hashmap,
+    );
     let now = Instant::now();
-    match lexer.scan(file_string) {
+    match lexer.scan(&file_string) {
         Ok(_result) => {
             // println!("{:#?}", _result);
             println!("Scanned in: {:.2?}", now.elapsed());
@@ -30,4 +34,5 @@ fn main() {
             println!("Error while scanning: {:#?}", error)
         }
     }
+    Ok(())
 }
