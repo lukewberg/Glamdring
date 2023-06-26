@@ -10,3 +10,6 @@ ahash = "0.8.3"
 rayon = "1.7.0"
 serde = "1.0.163"
 
+[profile.profiling]
+inherits = "release"
+debug = true

@@ -1,13 +1,8 @@
-use std::{
-    iter::Peekable,
-    mem::size_of,
-    ops::{Range},
-    str::CharIndices,
-};
+use std::{iter::Peekable, mem::size_of, ops::Range, str::CharIndices};
 
 use ahash::AHashMap;
 
-use crate::types::{NumberType, ScanError, ScannerResult, ScannerState, Token, Tokens};
+use crate::types::{NumberType, ScanError, ScannerResult, Token, Tokens};
 
 pub struct Lexer<'a> {
     token_map: &'a AHashMap<&'static str, Tokens>,
@@ -484,7 +479,7 @@ impl<'a> Lexer<'a> {
                             ));
                         }
                     }
-                    '0'..='9' => {
+                    '0'..='9' | '.' => {
                         if let Some((_index, number_type)) = self.scan_number(&mut source_iterator)
                         {
                             println!(
@@ -546,74 +541,62 @@ impl<'a> Lexer<'a> {
                'n'
             */
             if let Some((_, _char)) = source_iterator.peek() {
-                match _char {
-                    '0'..='9' => {}
-                    'A'..='F' => {}
-                    'x' | 'X' | 'o' | 'O' | 'n' | '.' | '+' | '-' | 'e' => (),
-                    _ => return Some((index, number_type)),
-                };
                 match number_type {
-                    NumberType::Float => match &current_char {
+                    NumberType::Float => match _char {
                         '0'..='9' => (),
                         '.' => (),
+                        'e' | 'E' => number_type = NumberType::Exponential,
                         _ => return Some((index, number_type)),
                     },
-                    NumberType::Int | NumberType::Exponential => {
-                        // Valid so long as no '.' or letters proceed
-                        match &current_char {
-                            '0'..='9' => (),
-                            '.' => {
-                                // If Int, convert to float.
-                                if number_type == NumberType::Int {
-                                    number_type = NumberType::Float;
-                                } else {
-                                    return Some((index, number_type));
-                                }
-                            }
-                            'n' => {
-                                if number_type == NumberType::Int {
-                                    return Some((index, NumberType::BigInt));
-                                }
-                                return None;
-                            }
-                            _ => (),
+                    NumberType::Int => match _char {
+                        '0'..='9' => (),
+                        'n' => return Some((index, NumberType::BigInt)),
+                        '.' => number_type = NumberType::Float,
+                        'e' | 'E' => number_type = NumberType::Exponential,
+                        _ => return Some((index, number_type)),
+                    },
+                    NumberType::Exponential => {
+                        // Valid so long as no letters proceed
+                        match _char {
+                            '0'..='9' | '.' | '+' | '-' => (),
+                            _ => return Some((index, number_type)),
                         }
                     }
                     NumberType::Hex => {
                         // Valid so long as chars are 'A'..='F' or '0'..='9'
-                        if ('A'..='F').contains(&current_char)
-                            || ('0'..='9').contains(&current_char)
-                            || current_char == 'n'
+                        if ('A'..='F').contains(_char)
+                            || ('0'..='9').contains(_char)
+                            || *_char == 'n'
                         {
-                            if current_char == 'n' {
+                            if *_char == 'n' {
                                 // Big, exit
                                 return Some((index, NumberType::BigHex));
                             }
                             continue;
                         }
-                        break;
+                        return Some((index, number_type));
                     }
                     NumberType::Octal => {
                         // Valid so long as chars are '0'..='7'
-                        if ('0'..='7').contains(&current_char) || current_char == 'n' {
-                            if current_char == 'n' {
+                        if ('0'..='7').contains(_char) || *_char == 'n' {
+                            if *_char == 'n' {
                                 // Big, exit
                                 return Some((index, NumberType::BigOctal));
                             }
                             continue;
                         }
-                        break;
+                        return Some((index, number_type));
                     }
                     NumberType::Binary => {
                         // Valid so long as chars are '0'..='1'
-                        if ('0'..='1').contains(&current_char) || current_char == 'n' {
-                            if current_char == 'n' {
+                        if ('0'..='1').contains(_char) || *_char == 'n' {
+                            if *_char == 'n' {
                                 // Big, exit
                                 return Some((index, NumberType::BigBinary));
                             }
                             continue;
                         }
-                        break;
+                        return Some((index, number_type));
                     }
                     NumberType::Undetermined => {
                         // We're not yet sure, perform some checks
@@ -622,19 +605,21 @@ impl<'a> Lexer<'a> {
                         match (current_char, _char) {
                             ('0', 'x' | 'X') => {
                                 number_type = NumberType::Hex;
-                                source_iterator.next();
+                                // source_iterator.next();
                             }
                             ('0', 'b' | 'B') => {
                                 number_type = NumberType::Binary;
-                                source_iterator.next();
+                                // source_iterator.next();
                             }
                             ('0', 'o' | '0') => {
                                 number_type = NumberType::Octal;
-                                source_iterator.next();
+                                // source_iterator.next();
                             }
                             ('0'..='9', 'e' | 'E') => number_type = NumberType::Exponential,
+                            ('0'..='9', '0'..='9') => number_type = NumberType::Int,
+                            ('.', '0'..='9') => number_type = NumberType::Float,
                             // Can't tell yet, assume int
-                            _ => number_type = NumberType::Int,
+                            _ => return None,
                         };
                     }
                     _ => (),
@@ -696,7 +681,7 @@ impl<'a> Lexer<'a> {
         None
     }
 
-    fn scan_template_string(source: &Vec<char>) -> () {
+    fn scan_template_string(source: &Vec<char>) {
         // TODO: Implement
         unimplemented!();
     }
