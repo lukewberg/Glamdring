@@ -26,7 +26,7 @@ fn main() -> Result<(), usize> {
     let now = Instant::now();
     match lexer.scan(&file_string) {
         Ok(_result) => {
-            // println!("{:#?}", _result);
+            // println!("{:#?}", _result.token_vec);
             println!("Scanned in: {:.2?}", now.elapsed());
             report_scanning_statistics(&_result);
         }

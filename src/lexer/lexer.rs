@@ -458,17 +458,30 @@ impl<'a> Lexer<'a> {
         let mut source_iterator = source.char_indices().peekable();
         let mut token_vec: Vec<Token> = Vec::with_capacity(size_of::<Token>() * 500);
         let mut line = 1;
+        static token_type_array: [Tokens; 10] = [
+            Tokens::Float,
+            Tokens::Int,
+            Tokens::Hex,
+            Tokens::Octal,
+            Tokens::Binary,
+            Tokens::Exponential,
+            Tokens::BigInt,
+            Tokens::BigHex,
+            Tokens::BigBinary,
+            Tokens::BigOctal,
+        ];
 
         while let Some((index, current_char)) = source_iterator.next() {
             match current_char {
-                ' ' => {}
+                ' ' => (),
                 '\n' | '\r' => {
                     line += 1;
                 }
                 _ => {}
             }
-            if let Some((_, char)) = source_iterator.peek() {
-                match char {
+            if let Some((_, _char)) = source_iterator.peek() {
+                match _char {
+                    '\n' | '\r' => (),
                     '"' | '\'' => {
                         if let Some(_index) = self.scan_string(&mut source_iterator) {
                             // println!("{}", &source[index + 1..=_index]);
@@ -479,18 +492,55 @@ impl<'a> Lexer<'a> {
                             ));
                         }
                     }
-                    '0'..='9' | '.' => {
+                    '0'..='9' | '.' if current_char == ' ' => {
                         if let Some((_index, number_type)) = self.scan_number(&mut source_iterator)
                         {
-                            println!(
-                                "Number of type: {:?} with value: {}",
-                                number_type,
-                                &source[index..=_index]
-                            );
-                            // token_vec.push(value)
+                            // println!(
+                            //     "{:?} with value: {} on line: {}",
+                            //     number_type,
+                            //     &source[index + 1..=_index],
+                            //     line
+                            // );
+                            token_vec.push(Token::new(
+                                line,
+                                &token_type_array[number_type as usize],
+                                Some(&source[index + 1..=_index]),
+                            ));
                         }
                     }
-                    _ => (),
+                    '*' | '/' if current_char == '/' => {
+                        if let Some(_lines) = self.scan_comments(&mut source_iterator) {
+                            line += _lines;
+                        }
+                    }
+                    '/' if current_char == ' ' => continue,
+                    ' ' if current_char == '/' => {
+                        println!("/ on line: {}", line);
+                        token_vec.push(Token::new(line, &Tokens::Divide, None));
+                    }
+                    ' ' => (),
+                    'a'..='z' | 'A'..='Z' => {
+                        if let Some(_index) = self.scan_identifier(&mut source_iterator) {
+                            // println!("{:#?} on line: {}", &source[index + 1..=_index], line);
+                            if let Some(token) = self.get_token(&source[index + 1..=_index], line) {
+                                token_vec.push(token);
+                            } else {
+                                token_vec.push(Token::new(
+                                    line,
+                                    &Tokens::Identifier,
+                                    Some(&source[index + 1..=_index]),
+                                ))
+                            }
+                        }
+                    }
+                    _ => {
+                        if let Some(_index) = self.scan_operator(&mut source_iterator) {
+                            println!("{:#?} on line: {}", &source[index + 1..=_index], line);
+                            if let Some(token) = self.get_token(&source[index + 1..=_index], line) {
+                                token_vec.push(token);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -511,16 +561,17 @@ impl<'a> Lexer<'a> {
                operators,
                newlines
             */
-            // Chars form an identifier as long as we don't encounter a space or operator
+            // Chars form an identifier as long as we don't encounter a space, punctuator or operator
             if let Some((_, _char)) = source_iterator.peek() {
                 match _char {
-                    '\n' | '\r' | ' ' => {
-                        return Some(index);
-                    }
+                    '\n' | '\r' | ' ' => return Some(index),
+                    ';' => return Some(index),
                     _ => (),
                 }
                 if let Some(_) = self.char_operator_token_map.get(_char) {
                     // End of the lexeme!
+                    return Some(index);
+                } else if let Some(_) = self.char_punctuator_token_map.get(_char) {
                     return Some(index);
                 }
             }
@@ -541,88 +592,55 @@ impl<'a> Lexer<'a> {
                'n'
             */
             if let Some((_, _char)) = source_iterator.peek() {
-                match number_type {
-                    NumberType::Float => match _char {
-                        '0'..='9' => (),
-                        '.' => (),
-                        'e' | 'E' => number_type = NumberType::Exponential,
-                        _ => return Some((index, number_type)),
-                    },
-                    NumberType::Int => match _char {
-                        '0'..='9' => (),
-                        'n' => return Some((index, NumberType::BigInt)),
-                        '.' => number_type = NumberType::Float,
-                        'e' | 'E' => number_type = NumberType::Exponential,
-                        _ => return Some((index, number_type)),
-                    },
-                    NumberType::Exponential => {
-                        // Valid so long as no letters proceed
-                        match _char {
-                            '0'..='9' | '.' | '+' | '-' => (),
-                            _ => return Some((index, number_type)),
-                        }
-                    }
-                    NumberType::Hex => {
-                        // Valid so long as chars are 'A'..='F' or '0'..='9'
-                        if ('A'..='F').contains(_char)
-                            || ('0'..='9').contains(_char)
-                            || *_char == 'n'
+                match _char {
+                    // Single int
+                    ' ' => return Some((index, NumberType::Int)),
+                    '0'..='9' => {
+                        if number_type != NumberType::Int && number_type != NumberType::Undetermined
                         {
-                            if *_char == 'n' {
-                                // Big, exit
-                                return Some((index, NumberType::BigHex));
-                            }
                             continue;
+                        }
+                        number_type = NumberType::Int
+                    }
+                    '.' => number_type = NumberType::Float,
+                    'x' | 'X' => number_type = NumberType::Hex,
+                    'b' | 'B' => number_type = NumberType::Binary,
+                    'o' | 'O' => number_type = NumberType::Octal,
+                    'e' | 'E' => number_type = NumberType::Exponential,
+                    'A'..='F' | 'a'..='f' => {
+                        if number_type != NumberType::Hex {
+                            return None;
+                        }
+                    }
+                    '+' | '-' => {
+                        if number_type != NumberType::Exponential {
+                            return Some((index, number_type));
+                        }
+                    }
+                    'n' => {
+                        // Move past 'n'
+                        source_iterator.next();
+                        match number_type {
+                            NumberType::Int => return Some((index + 1, NumberType::BigInt)),
+                            NumberType::Hex => return Some((index + 1, NumberType::BigHex)),
+                            NumberType::Octal => return Some((index + 1, NumberType::BigOctal)),
+                            NumberType::Binary => return Some((index + 1, NumberType::BigBinary)),
+                            NumberType::BigInt => return None,
+                            NumberType::BigHex => return None,
+                            NumberType::BigBinary => return None,
+                            NumberType::BigOctal => return None,
+                            _ => (),
+                        }
+                    }
+
+                    _ => {
+                        if ('0'..='9').contains(&current_char)
+                            && number_type == NumberType::Undetermined
+                        {
+                            return Some((index, NumberType::Int));
                         }
                         return Some((index, number_type));
                     }
-                    NumberType::Octal => {
-                        // Valid so long as chars are '0'..='7'
-                        if ('0'..='7').contains(_char) || *_char == 'n' {
-                            if *_char == 'n' {
-                                // Big, exit
-                                return Some((index, NumberType::BigOctal));
-                            }
-                            continue;
-                        }
-                        return Some((index, number_type));
-                    }
-                    NumberType::Binary => {
-                        // Valid so long as chars are '0'..='1'
-                        if ('0'..='1').contains(_char) || *_char == 'n' {
-                            if *_char == 'n' {
-                                // Big, exit
-                                return Some((index, NumberType::BigBinary));
-                            }
-                            continue;
-                        }
-                        return Some((index, number_type));
-                    }
-                    NumberType::Undetermined => {
-                        // We're not yet sure, perform some checks
-                        // This should be run on the first 2 chars of the literal
-                        // If someone wrote 0000XA0B0C0, we're only gonna grab from 0X on
-                        match (current_char, _char) {
-                            ('0', 'x' | 'X') => {
-                                number_type = NumberType::Hex;
-                                // source_iterator.next();
-                            }
-                            ('0', 'b' | 'B') => {
-                                number_type = NumberType::Binary;
-                                // source_iterator.next();
-                            }
-                            ('0', 'o' | '0') => {
-                                number_type = NumberType::Octal;
-                                // source_iterator.next();
-                            }
-                            ('0'..='9', 'e' | 'E') => number_type = NumberType::Exponential,
-                            ('0'..='9', '0'..='9') => number_type = NumberType::Int,
-                            ('.', '0'..='9') => number_type = NumberType::Float,
-                            // Can't tell yet, assume int
-                            _ => return None,
-                        };
-                    }
-                    _ => (),
                 }
             }
         }
@@ -630,26 +648,30 @@ impl<'a> Lexer<'a> {
     }
 
     fn scan_operator(&self, source_iterator: &mut Peekable<CharIndices<'_>>) -> Option<usize> {
+        // We know current_char is a lexeme
         let mut is_potential_spread = false;
         while let Some((index, current_char)) = source_iterator.next() {
-            if let Some(lexeme) = self.char_operator_token_map.get(&current_char) {
+            if let Some((_, _char)) = source_iterator.peek() {
                 // Char is at least a lexeme, check if it's a punctuator (most likely)
-                match self
-                    .char_punctuator_token_map
-                    .contains_key(&source_iterator.peek().unwrap().1)
-                {
-                    true => {
-                        // We'll end here, unless we encounter a '.', as three make a spread operator
-                        if is_potential_spread == true && (source_iterator.peek().unwrap()).1 == '.'
-                        {
-                            return Some(index);
-                        } else if current_char == '.' && (source_iterator.peek().unwrap()).1 == '.'
-                        {
+                match _char {
+                    '\n' | '\r' => return Some(index),
+                    '.' => {
+                        if !is_potential_spread {
                             is_potential_spread = true;
+                        } else {
+                            if *_char == '.' {
+                                // Spread found, exit early
+                                source_iterator.next();
+                                return Some(index + 1);
+                            }
                         }
-                        return Some(index);
                     }
-                    _ => (),
+                    _ => {
+                        let is_operator = self.char_operator_token_map.contains_key(_char);
+                        if !is_operator {
+                            return Some(index);
+                        }
+                    }
                 }
             }
         }
@@ -681,18 +703,29 @@ impl<'a> Lexer<'a> {
         None
     }
 
+    fn scan_comments(&self, source_iterator: &mut Peekable<CharIndices<'_>>) -> Option<u16> {
+        let mut num_newlines = 0;
+        let is_block_comment = source_iterator.peek().unwrap().1 == '*';
+        while let Some((index, current_char)) = source_iterator.next() {
+            if let Some((_, _char)) = source_iterator.peek() {
+                match (current_char, _char) {
+                    (_, '\n') if !is_block_comment => return Some(num_newlines),
+                    (_, '\n') => num_newlines += 1,
+                    ('*', '/') => return Some(num_newlines),
+                    _ => (),
+                }
+            }
+        }
+        None
+    }
+
     fn scan_template_string(source: &Vec<char>) {
         // TODO: Implement
         unimplemented!();
     }
 
-    fn get_token(&self, source: &str, range: Range<usize>, line: u16) -> Option<Token> {
+    fn get_token(&self, lexeme: &str, line: u16) -> Option<Token<'a>> {
         // Check `token_map` to see if string is a keyword or operator
-        let lexeme = &source[range.start..range.end];
-        // for c in &source[range.start..range.end] {
-        //     lexeme.push(*c);
-        // }
-        // let lexeme = Lexer::slice_string(source, range);
         if lexeme.len() > 1 {
             if let Some(token) = self.token_map.get(lexeme) {
                 // We have found a keyword/operator, now add it to the result vector
