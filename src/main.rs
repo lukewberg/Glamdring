@@ -12,7 +12,7 @@ use weblex::{lexer::lexer::Lexer, util::stats::report_scanning_statistics};
 fn main() -> Result<(), usize> {
     // Collect command-line arguments
     let args: Vec<String> = env::args().collect();
-    let file_path = &args.get(1).expect("No input supplied, aborting!");
+    let file_path = args.get(1).expect("No input supplied, aborting!");
     // println!("Path: {file_path}");
 
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");

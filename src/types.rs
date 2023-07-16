@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub enum Tokens {
     Await,
@@ -182,6 +182,11 @@ pub enum NumberType {
     BigOctal,
     // Intermediate type
     Undetermined,
+}
+
+pub enum CliArgs {
+    TokenOutput(String),
+    SourceInput(String),
 }
 
 pub enum TestEnum {
