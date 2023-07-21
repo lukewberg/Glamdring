@@ -149,8 +149,6 @@ pub struct ScannerResult<'a> {
 
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
-    // pub start: u32,
-    // pub end: u32,
     pub line: u16,
     pub token_type: &'a Tokens,
     pub lexeme: Option<&'a str>,

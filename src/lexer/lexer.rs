@@ -124,336 +124,6 @@ impl<'a> Lexer<'a> {
         ])
     }
 
-    // fn build_number_token_map() -> HashMap<NumberType, Tokens> {
-    //     HashMap::from([
-    //         (NumberType::Int, Tokens::Int),
-    //         (NumberType::Float, Tokens::Float),
-    //         (NumberType::Hex, Tokens::Hex),
-    //         (NumberType::Octal, Tokens::Octal),
-    //         (NumberType::Binary, Tokens::Binary),
-    //         (NumberType::Exponential, Tokens::Exponential),
-    //         (NumberType::BigInt, Tokens::BigInt),
-    //         (NumberType::BigHex, Tokens::BigHex),
-    //         (NumberType::BigBinary, Tokens::BigBinary),
-    //         (NumberType::BigOctal, Tokens::BigOctal),
-    //     ])
-    // }
-
-    // pub fn load(&'a mut self, source: String) {
-    //     self.source = source;
-    //     self.source_iterator = self.source.char_indices();
-    // }
-
-    // pub fn scan_old(&self, source: String) -> Result<ScannerResult, ScanError> {
-    //     let mut start = 0;
-    //     let mut line = 1;
-
-    //     /* When we encounter a single-char lexeme like =, we keep proceeding
-    //     until we encounter a char that is not a single-char lexeme */
-    //     // Machine state defaults to Idle
-    //     let mut scanner_state = ScannerState::Idle;
-
-    //     let mut token_vec: Vec<Token> = Vec::with_capacity(size_of::<Token>() * 500);
-    //     let mut source_iterator = source.char_indices().peekable();
-
-    //     while let Some((i, char)) = source_iterator.next() {
-    //         // thread::sleep(time::Duration::from_millis(1200));
-    //         match char {
-    //             ' ' => {
-    //                 // Whitespace can  terminate a lexeme, be contiguous, or also be part of a string or comment.
-    //                 // When first encountering white-space we will check for a lexeme between the start and current range
-    //                 // `scanner_state` will then be set to `ScannerState::InWhitespace`
-    //                 // If `scanner_state` is already `ScannerState::InWhitespace`, we will only increment start until non-white space is encountered
-
-    //                 // We could be traversing white space in a comment or string literal
-    //                 // Increment current and continue if so
-
-    //                 match scanner_state {
-    //                     ScannerState::InComment
-    //                     | ScannerState::InBlockComment
-    //                     | ScannerState::InStringDouble
-    //                     | ScannerState::InStringSingle
-    //                     | ScannerState::InStringTemplate => continue,
-    //                     ScannerState::InWhitespace => {
-    //                         start = i;
-    //                         continue;
-    //                     }
-    //                     ScannerState::InNumber => {
-    //                         // Exiting a number
-    //                         // Can't validate number or get it's type without reaching a whitespace, newline, or operator
-    //                         if let Some(token) = self.get_number_token(&source, start..i, line) {
-    //                             start = i;
-    //                             scanner_state = ScannerState::Idle;
-    //                             token_vec.push(token);
-    //                             continue;
-    //                         }
-    //                     }
-    //                     _ => {
-    //                         // When passing through newlines, start index gets incremented "onto" the new line
-    //                         // Because of this, when we check for a token and get none, \n get's added as an "identifier"
-    //                         // So we check for an imposter \n char
-    //                         if &source[start..i] == "\n" {
-    //                             start = i;
-    //                             scanner_state = ScannerState::InWhitespace;
-    //                             continue;
-    //                         }
-    //                         // We have encountered white space
-    //                         // Check to see if lexeme between `start` and `i`
-    //                         token_vec.push(self.get_token(&source, start..i, line).unwrap_or_else(
-    //                             || {
-    //                                 Token::new(
-    //                                     line,
-    //                                     &Tokens::Identifier,
-    //                                     Some(source[start..i].to_string()),
-    //                                 )
-    //                             },
-    //                         ));
-    //                         // Since we are in white space, set this to true in case of contiguous
-    //                         scanner_state = ScannerState::InWhitespace;
-    //                     }
-    //                 }
-
-    //                 start = i;
-    //                 continue;
-    //             }
-    //             '/' => {
-    //                 if i == 0 {
-    //                     continue;
-    //                 }
-    //                 // Could be a division token or the start/end of a comment/block comment
-    //                 // Check if last char was another `/`
-    //                 if &source[i - 1..i] == "/" {
-    //                     // We are in a comment, change machine state
-    //                     scanner_state = ScannerState::InComment;
-    //                 } else if &source[i - 1..i] == "*" {
-    //                     // We have exited a block comment
-    //                     scanner_state = ScannerState::Idle;
-    //                 } else {
-    //                     // If we aren't in a comment, proceed as normal operator and catch in another match arm
-    //                     scanner_state = ScannerState::InOperator;
-    //                 }
-    //             }
-    //             '\n' | '\r' => {
-    //                 // Although it's uncommon, statements can be multiline
-    //                 // Newlines do delimit tokens
-    //                 // Newlines terminate single-line comments
-
-    //                 match scanner_state {
-    //                     ScannerState::InStringDouble | ScannerState::InStringSingle => {
-    //                         // Strings are't multiline outside of template strings
-    //                         // Throw error here
-    //                         return Err(ScanError::InvalidSyntax {
-    //                             token: String::from("/\n"),
-    //                             line,
-    //                         });
-    //                     }
-    //                     ScannerState::InComment => {
-    //                         // We were in a comment but have reached it's end, change to `Idle` state
-    //                         scanner_state = ScannerState::Idle;
-    //                     }
-    //                     ScannerState::InBlockComment | ScannerState::Idle => {
-    //                         start = i;
-    //                         line += 1;
-    //                         continue;
-    //                     }
-    //                     ScannerState::InPunctuator => {
-    //                         // Most likely a semicolon
-    //                         if let Some(token) = self.get_token(&source, start..i, line) {
-    //                             token_vec.push(token);
-    //                         }
-    //                     }
-    //                     _ => {
-    //                         // Because newline delimits tokens, capture and add token to result vec
-    //                         if let Some(token) = self.get_token(&source, start..(i - 1), line) {
-    //                             token_vec.push(token);
-    //                         }
-    //                     }
-    //                 }
-
-    //                 // Scanner state is always idle when moving through newlines
-    //                 scanner_state = ScannerState::Idle;
-    //                 start = i;
-    //                 line += 1;
-    //                 continue;
-    //             }
-    //             '*' => {
-    //                 // Asterisk can be an operator, part of an operator or signify the start of a block comment (if preceded by a `/`)
-    //                 if scanner_state == ScannerState::InOperator {
-    //                     // If we find a preceding '/' char, we're in a block comment
-    //                     if &source[i - 1..i] == "/" {
-    //                         scanner_state = ScannerState::InBlockComment;
-    //                         continue;
-    //                     }
-    //                 }
-    //                 if &source[i - 1..i] == "/" {
-    //                     scanner_state = ScannerState::InBlockComment;
-    //                 } else {
-    //                     // If no '/' char is behind us, we must be part of a normal operator. Will catch in another match arm
-    //                     scanner_state = ScannerState::InOperator;
-    //                     start = i;
-    //                     continue;
-    //                 }
-    //             }
-    //             '`' => {
-    //                 // TODO: Call `scan_template_string` here
-    //             }
-    //             _ => {
-    //                 // Catch-all for the rest of the lexemes
-    //                 match scanner_state {
-    //                     ScannerState::InComment | ScannerState::InBlockComment => {
-    //                         continue;
-    //                     }
-    //                     ScannerState::InStringSingle | ScannerState::InStringDouble => {
-    //                         // Check to see if we're at the end of the string
-    //                         // String ends with same char as it began, either ' or "
-    //                         // Also check for escape backslash
-    //                         if (char == '"' || char == '\'')
-    //                             && (scanner_state == ScannerState::InStringDouble
-    //                                 || scanner_state == ScannerState::InStringSingle)
-    //                         {
-    //                             // Check for escape at previous index
-    //                             // Only check if the escaped char is the same as what started the string
-    //                             if (char == '"' && scanner_state == ScannerState::InStringDouble
-    //                                 || char == '\''
-    //                                     && scanner_state == ScannerState::InStringSingle)
-    //                                 && &source[i - 1..i] == "\\"
-    //                             {
-    //                                 // We are still in the string, continue
-    //                                 continue;
-    //                             }
-    //                             token_vec.push(Token::new(
-    //                                 line,
-    //                                 &Tokens::String,
-    //                                 Some(source[start..i + 1].to_string()),
-    //                             ));
-    //                             scanner_state = ScannerState::Idle;
-    //                             start = i;
-    //                             continue;
-    //                         }
-    //                     }
-    //                     _ => {
-    //                         // Is current char a lexeme
-    //                         if let Some(char_token) = self.char_operator_token_map.get(&char) {
-    //                             match scanner_state {
-    //                                 ScannerState::InNumber => {
-    //                                     // Number has been terminated
-    //                                     if let Some(token) =
-    //                                         Lexer::get_number_token(&self, &source, start..i, line)
-    //                                     {
-    //                                         token_vec.push(token);
-    //                                         // scanner_state = ScannerState::InOperator;
-    //                                         // start = i;
-    //                                         // continue;
-    //                                     }
-    //                                 }
-    //                                 ScannerState::InIdentifier => {
-    //                                     // If we were in an identifier or other token, we need to close that out
-    //                                     if let Some(token) = self.get_token(&source, start..i, line)
-    //                                     {
-    //                                         token_vec.push(token);
-    //                                     } else {
-    //                                         token_vec.push(Token::new(
-    //                                             line,
-    //                                             &Tokens::Identifier,
-    //                                             Some(source[start..i].to_string()),
-    //                                         ));
-    //                                     }
-    //                                 }
-    //                                 ScannerState::InOperator => {
-    //                                     // Current char is lexeme, and so was last
-    //                                     continue;
-    //                                 }
-    //                                 ScannerState::InPunctuator => {
-    //                                     // Last char was a punctuator, add to token_vec
-    //                                     token_vec.push(Token::new(
-    //                                         line,
-    //                                         self.char_operator_token_map
-    //                                             .get(&source[start..i].chars().next().unwrap())
-    //                                             .unwrap(),
-    //                                         None,
-    //                                     ))
-    //                                 }
-    //                                 _ => (),
-    //                             }
-    //                             if Lexer::is_punctuator(char_token) == true {
-    //                                 // token_vec.push(Token::new(line, char_token.to_owned(), None));
-    //                                 scanner_state = ScannerState::InPunctuator;
-    //                             } else {
-    //                                 // If there was an identifier, it has been closed out, current char may be part of operator
-    //                                 scanner_state = ScannerState::InOperator;
-    //                             }
-    //                             start = i;
-    //                             continue;
-    //                         } else {
-    //                             match scanner_state {
-    //                                 ScannerState::InNumber => {
-    //                                     // We're in a number but the current char is not a number
-    //                                     // It may be the end of the literal, check
-    //                                     if Lexer::is_number_terminated(&source, i) == false {
-    //                                         // If not yet terminated, we want to continue.
-    //                                         // Else, we will transition below
-    //                                         continue;
-    //                                     }
-    //                                 }
-    //                                 ScannerState::InPunctuator => {
-    //                                     // We know current char is not an operator or part of one
-    //                                     // Last char (at index start) was a punctuator
-    //                                     // We can assume that we are currently in an identifier
-    //                                     if let Some(token_type) =
-    //                                         self.char_operator_token_map.get(&char)
-    //                                     {
-    //                                         token_vec.push(Token::new(line, token_type, None));
-    //                                     }
-    //                                 }
-    //                                 ScannerState::InIdentifier => {
-    //                                     continue;
-    //                                 }
-    //                                 _ => (),
-    //                             }
-    //                             // White space is caught above. The char is not a lexeme itself (not an operator)
-    //                             // At this point, we can't know if we're in a keyword or identifier. Must test
-    //                             // Just exited an operator or literal, check for token between range
-    //                             // Check for number
-    //                             if let Ok(_) = char.to_string().parse::<i32>() {
-    //                                 // all number types in JS at least start with a number
-    //                                 if scanner_state != ScannerState::InNumber {
-    //                                     scanner_state = ScannerState::InNumber;
-    //                                     start = i;
-    //                                 }
-    //                                 continue;
-    //                             }
-
-    //                             if char == '"' && scanner_state != ScannerState::InStringDouble {
-    //                                 scanner_state = ScannerState::InStringDouble;
-    //                                 start = i;
-    //                                 continue;
-    //                             } else if char == '\''
-    //                                 && scanner_state != ScannerState::InStringSingle
-    //                             {
-    //                                 scanner_state = ScannerState::InStringSingle;
-    //                                 start = i;
-    //                                 continue;
-    //                             }
-    //                             // if let Some(token) = self.get_token(&source_chars_chars, start..i, line) {
-    //                             //     // There's a token, add to vec
-    //                             //     token_vec.push(token);
-    //                             // }
-    //                             scanner_state = ScannerState::InIdentifier;
-    //                             start = i;
-    //                             continue;
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         // println!("Scanner state is: {:#?}\n on char: {}", scanner_state, char);
-    //     }
-    //     Ok(ScannerResult {
-    //         file_name: String::from("Hello World!"),
-    //         token_vec
-    //     })
-    // }
-
     pub fn scan(&self, source: &'a String) -> Result<ScannerResult<'a>, ScanError> {
         let mut source_iterator = source.char_indices().peekable();
         let mut token_vec: Vec<Token> = Vec::with_capacity(size_of::<Token>() * 500);
@@ -579,10 +249,10 @@ impl<'a> Lexer<'a> {
                             }
                         }
                         _ => {
+                            // First check for a punctuator
                             if let Some((_index, _current_char)) =
-                                self.scan_operator(&mut source_iterator)
+                                self.scan_punctuator(&mut source_iterator)
                             {
-                                // println!("{:#?} on line: {}", &source[index + 1..=_index], line);
                                 if let Some(token) =
                                     self.get_token(&source[index + 1..=_index], line)
                                 {
@@ -590,7 +260,19 @@ impl<'a> Lexer<'a> {
                                 }
                                 (_index, _current_char)
                             } else {
-                                (index, current_char)
+                                if let Some((_index, _current_char)) =
+                                    self.scan_operator(&mut source_iterator)
+                                {
+                                    // println!("{:#?} on line: {}", &source[index + 1..=_index], line);
+                                    if let Some(token) =
+                                        self.get_token(&source[index + 1..=_index], line)
+                                    {
+                                        token_vec.push(token);
+                                    }
+                                    (_index, _current_char)
+                                } else {
+                                    (index, current_char)
+                                }
                             }
                         }
                     }
@@ -605,6 +287,24 @@ impl<'a> Lexer<'a> {
             source,
             token_vec,
         })
+    }
+
+    fn scan_punctuator(
+        &self,
+        source_iterator: &mut Peekable<CharIndices<'_>>,
+    ) -> Option<(usize, char)> {
+        // First, peek and check punctuator map for char
+        // Peek because we don't want to consume the char in case it's an operator
+        if let Some((_index, peeked_char)) = source_iterator.peek() {
+            // Check the punctuator map for the peeked char
+            if self.char_punctuator_token_map.contains_key(peeked_char) {
+                // Advance iterator and return result
+                return Some(source_iterator.next().unwrap());
+            } else {
+                return None;
+            }
+        }
+        None
     }
 
     fn scan_identifier(
@@ -813,152 +513,15 @@ impl<'a> Lexer<'a> {
                 // keywords/operators do not need to have their literal copied into the token
                 Some(Token::new(line, token, None))
             } else {
-                None
+                // Check for punctuator
+                if let Some(token) = self.char_punctuator_token_map.get(&char) {
+                    Some(Token::new(line, token, None))
+                } else {
+                    None
+                }
             }
         }
     }
-
-    // fn get_number_type(&self, source: &str, range: &Range<usize>) -> Option<NumberType> {
-    //     // Get string of the first couple chars
-    //     let literal = match source.get(range.start..range.end) {
-    //         Some(result) => result,
-    //         None => {
-    //             return None;
-    //         }
-    //     };
-    //     // TODO: Convert this slop to tuples
-    //     if let Some(slice) = source.get(0..2) {
-    //         match slice {
-    //             "0x" | "0X" => {
-    //                 // Hex
-    //                 if literal.ends_with('n') == true {
-    //                     // BigHex
-    //                     return Some(NumberType::BigHex);
-    //                 }
-    //                 return Some(NumberType::Hex);
-    //             }
-    //             "0b" | "0B" => {
-    //                 // Binary
-    //                 if literal.ends_with('n') == true {
-    //                     // BigBinary
-    //                     return Some(NumberType::BigBinary);
-    //                 }
-    //                 return Some(NumberType::Binary);
-    //             }
-    //             "0o" | "0O" => {
-    //                 // Octal
-    //                 if literal.ends_with('n') == true {
-    //                     return Some(NumberType::BigOctal);
-    //                 }
-    //                 return Some(NumberType::Octal);
-    //             }
-    //             _ => {
-    //                 // Check if number is exponential, if it is, return
-    //                 if Lexer::is_number_exponential(source, range.start..range.end) == true {
-    //                     return Some(NumberType::Exponential);
-    //                 }
-    //                 // Exponential have n digits followed by 'e' followed by an optional +- and then digits
-    //                 // BigInt only ends with 'n', cannot start with 0
-    //                 if literal.ends_with('n') == true {
-    //                     return Some(NumberType::BigInt);
-    //                 } else {
-    //                     // Normal int or decimal
-    //                     for char in literal.chars() {
-    //                         if char == '.' {
-    //                             return Some(NumberType::Float);
-    //                         }
-    //                     }
-    //                     return Some(NumberType::Int);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
-
-    // fn get_number_token(&self, source: &str, range: Range<usize>, line: u16) -> Option<Token> {
-    //     // Validate number and get it's type
-    //     // Array is on the stack, BLAZINGLY fast
-    //     static token_type_array: [Tokens; 10] = [
-    //         Tokens::Float,
-    //         Tokens::Int,
-    //         Tokens::Hex,
-    //         Tokens::Octal,
-    //         Tokens::Binary,
-    //         Tokens::Exponential,
-    //         Tokens::BigInt,
-    //         Tokens::BigHex,
-    //         Tokens::BigBinary,
-    //         Tokens::BigOctal,
-    //     ];
-
-    //     if let Some(number_type) = self.get_number_type(&source, &range) {
-    //         let literal = &source[range.start..range.end];
-    //         return Some(Token::new(
-    //             line,
-    //             &token_type_array[number_type as usize],
-    //             Some(literal.to_owned()),
-    //         ));
-    //     }
-    //     None
-    // }
-
-    // fn is_number_exponential(source: &str, range: Range<usize>) -> bool {
-    //     let source_chars = &source[range];
-    //     if source_chars.len() == 0 {
-    //         return false;
-    //     }
-    //     let mut e_found = false;
-    //     let mut sign_found = false;
-    //     for char in source_chars.chars() {
-    //         // If we have already encountered 'e', the rest must be numbers or +/-
-    //         // If not, continue to parse numbers.
-    //         if let Ok(_) = char.to_string().parse::<i32>() {
-    //         } else if char == '+' || char == '-' {
-    //             if sign_found == true {
-    //                 // Invalid, return false
-    //                 return false;
-    //             }
-    //             sign_found = true;
-    //         } else if char == 'e' || char == 'E' {
-    //             if e_found == true {
-    //                 // Invalid, return false
-    //                 return false;
-    //             }
-    //             e_found = true;
-    //         } else {
-    //             return false;
-    //         }
-    //     }
-    //     return e_found;
-    // }
-
-    // fn is_number_terminated(source: &str, index: usize) -> bool {
-    //     // To be used when an operator has been encountered while scanning through a number
-    //     // Numbers are terminated by spaces, operators, or chars not acceptable for their type
-    //     // We can only validate a number after it's boundaries are found.
-    //     // This function tests if we are at the end boundary
-    //     match (&source[index - 1..index], &source[index..index]) {
-    //         ("e" | "E", "+" | "-") => false,
-    //         _ => true,
-    //     }
-    // }
-
-    // fn is_punctuator(token: &Tokens) -> bool {
-    //     match token {
-    //         Tokens::OpenCurlyBrace
-    //         | Tokens::CloseCurlyBrace
-    //         | Tokens::OpenParenthesis
-    //         | Tokens::CloseParenthesis
-    //         | Tokens::OpenBrace
-    //         | Tokens::CloseBrace
-    //         | Tokens::Semicolon
-    //         | Tokens::Comma
-    //         | Tokens::Dot
-    //         | Tokens::Colon => true,
-    //         _ => false,
-    //     }
-    // }
 
     pub fn get_maps() -> (
         AHashMap<&'static str, Tokens>,
