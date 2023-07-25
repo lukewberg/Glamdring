@@ -1,4 +1,4 @@
-# webLex
+# Glamdring
 
 ## A JavaScript and Typescript transpiler and bundler.
 

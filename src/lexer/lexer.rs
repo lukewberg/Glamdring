@@ -1,4 +1,4 @@
-use std::{iter::Peekable, mem::size_of, ops::Range, str::CharIndices};
+use std::{iter::Peekable, mem::size_of, str::CharIndices};
 
 use ahash::AHashMap;
 
