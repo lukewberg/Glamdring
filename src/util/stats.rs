@@ -4,11 +4,11 @@ pub fn report_scanning_statistics(scanner_result: &ScannerResult) {
     let mut num_punctuators = 0;
     let mut num_lexemes = 0;
     let mut num_identifiers = 0;
-    let token_vec_len = scanner_result.token_vec.len() as f64; // cast to float
+    let token_vec_len = scanner_result.token_iterator.len() as f64; // cast to float
 
     scanner_result
-        .token_vec
-        .iter()
+        .token_iterator
+        .clone()
         .for_each(|token| match token.token_type {
             Tokens::Identifier => num_identifiers += 1,
             Tokens::OpenCurlyBrace

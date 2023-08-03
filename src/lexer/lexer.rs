@@ -285,7 +285,7 @@ impl<'a> Lexer<'a> {
         Ok(ScannerResult {
             file_name: String::from("Hello world!"),
             source,
-            token_vec,
+            token_iterator: token_vec.into_iter().peekable(),
         })
     }
 
@@ -478,7 +478,7 @@ impl<'a> Lexer<'a> {
     fn scan_comments(&self, source_iterator: &mut Peekable<CharIndices<'_>>) -> Option<u16> {
         let mut num_newlines = 0;
         let is_block_comment = source_iterator.peek().unwrap().1 == '*';
-        while let Some((index, current_char)) = source_iterator.next() {
+        while let Some((_index, current_char)) = source_iterator.next() {
             if let Some((_, _char)) = source_iterator.peek() {
                 match (current_char, _char) {
                     (_, '\n') if !is_block_comment => return Some(num_newlines),

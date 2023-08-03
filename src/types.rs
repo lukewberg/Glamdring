@@ -144,7 +144,7 @@ pub enum ScannerState {
 pub struct ScannerResult<'a> {
     pub file_name: String,
     pub source: &'a String,
-    pub token_vec: Vec<Token<'a>>,
+    pub token_iterator: std::iter::Peekable<std::vec::IntoIter<Token<'a>>>,
 }
 
 #[derive(Debug, Clone)]
