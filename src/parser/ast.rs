@@ -1,40 +1,22 @@
 pub trait Node {
-    type OutputNode: Node;
-    fn new() -> Self::OutputNode;
+    // fn new() -> Self where Self: Sized;
     fn get_type(&self) -> &NodeType;
+    fn visit(&self, visitor: Box<dyn Visitor>);
 }
+
+pub trait Visitor {
+    fn visit_identifier(&self);
+}
+
+pub trait Expression: Node {}
+
+pub trait Pattern: Node {}
+
+pub trait Statement: Node {}
 
 pub struct Program {
     node_type: NodeType,
-    body: [Statement],
-}
-
-pub struct Statement {}
-
-impl Node for Statement {
-    type OutputNode = Self;
-
-    fn new() -> Self::OutputNode {
-        Statement {}
-    }
-
-    fn get_type(&self) -> &NodeType {
-        &NodeType::Statement
-    }
-}
-
-pub struct Pattern {}
-
-impl Node for Pattern {
-    type OutputNode = Self;
-
-    fn new() -> Self::OutputNode {
-        Pattern {}
-    }
-
-    fn get_type(&self) -> &NodeType {
-        &NodeType::Pattern
-    }
+    body: Vec<Box<dyn Statement>>,
 }
 
 pub struct SourceLocation {
@@ -49,19 +31,26 @@ pub struct Position {
 }
 
 pub struct Identifier {
-    // name: String,
+    name: String,
 }
 
 impl Node for Identifier {
-    type OutputNode = Self;
     fn get_type(&self) -> &NodeType {
         &NodeType::Identifier
     }
 
-    fn new() -> Self::OutputNode {
-        Identifier {}
+    fn visit(&self, visitor: Box<dyn Visitor>) {
+        visitor.visit_identifier();
     }
 }
+
+impl Identifier {
+    fn new(name: String) -> Self {
+        Identifier { name }
+    }
+}
+
+impl Expression for Identifier {}
 
 pub enum NodeType {
     Program,

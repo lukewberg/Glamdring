@@ -20,6 +20,7 @@ pub enum Tokens {
     Finally,
     For,
     Function,
+    // GeneratorFunction,
     If,
     Import,
     In,
